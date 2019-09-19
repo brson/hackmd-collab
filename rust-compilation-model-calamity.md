@@ -64,11 +64,11 @@ In this episode:
 - [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
 - [Tradeoff #3: Trait coherence and the orphan rule](#user-content-tradeoff-3-trait-coherence-and-the-orphan-rule)
 - [Tradeoff #4: LLVM](#user-content-tradeoff-4-llvm)
-- [Tradeoff #5: Batch compilation](#user-content-tradeoff-5-batch-compilation)
-- [Tradeoff #6: Build scripts](#user-content-tradeoff-6-build-scripts)
-- [Tradeoff #7: Procedural macros](#user-content-tradeoff-7-procedural-macros)
-- [Tradeoff #8: Fixed compilation profiles](#user-content-tradeoff-8-fixed-compilation-profiles)
-- [Tradeoff #9: Extreme run-time performance](#user-content-tradeoff-9-extreme-run-time-performance)
+- [Tradeoff #5: Poor LLVM IR generation](#user-content-tradeoff-5-poor-llvm-ir-generation)
+- [Tradeoff #6: Batch compilation](#user-content-tradeoff-6-batch-compilation)
+- [Tradeoff #7: Build scripts](#user-content-tradeoff-7-build-scripts)
+- [Tradeoff #8: Procedural macros](#user-content-tradeoff-8-procedural-macros)
+- [Tradeoff #9: Fixed compilation profiles](#user-content-tradeoff-9-fixed-compilation-profiles)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
 - [In the next episode of The TiKV Compile-time Saga](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
 - [Thanks](#user-content-thanks)
@@ -485,6 +485,7 @@ The reason for "bottomming out" in an I/O function is to prevent the compiler fr
 
 TODO
 
+
 ## Tradeoff #2: Huge compilation units
 
 A _compilation unit_ is the basic unit of work that a language's compiler operates on. In C and C++ the compilation unit is a source file. In Java it is a source file. In Rust the compilation unit is a _crate_, which is composed of many files.
@@ -542,26 +543,70 @@ In preparation for this blog I asked a few people if they could recall the reaso
 
 Although driven by fundamental design constraints, the hard daggishness of crates should be consider a feature: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
 
-Note the emphasis on _parallelism_ above. The crate DAG is the best source of compile-time parallelism we have access to. Cargo will use the DAG to automatically divide work TODO
+Note the emphasis on _parallelism_ above. The crate DAG is the best source of compile-time parallelism we have access to. Cargo today will use the DAG to automatically divide work into parallel jobs TODO.
 
 TODO mention 
 
 So it's quite desirable for Rust code to be broken into crates that form a _wide_ DAG.
 
+...
+
+Probably the biggest reason that Rust crates tend to be large though is because of ...
+
+
 
 ## Tradeoff #3: Trait coherence and the orphan rule
 
+Rust's trait system makes it difficult to make crates into abstraction boundaries because of a thing call the _orphan rule_.
+
+Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeof.
+
+The [orphan rule][or]
+
+
+[or]: todo
+
+
 ## Tradeoff #4: LLVM
 
-## Tradeoff #5: Batch compilation
+This is pretty simple and understandable. `rustc` uses LLVM to generate code. LLVM can generate very fast code, but it comes at a cost. LLVM is a very big system. In fact, LLVM code makes up the majority of the Rust codebase. And it doesn't operate particularly fast.
 
-## Tradeoff #6: Build scripts
+So even when `rustc` is generating debug builds, that are supposed to build fast, but are allowed to run slow, generating the machine code still takes a considerable amount of time.
 
-## Tradeoff #7: Procedural macros
+In a TiKV release build, LLVM passes occupy TODO% of the build time, while in a debug build LLVM passes occupy TODO% of the build time.
 
-## Tradeoff #8: Fixed compilation profiles
+LLVM being poor at generating slow code quickly is not in intrinsic property of the language though, and efforts are underway to create a second backend using [Cranelift], a code generator written in Rust, and designed for fast code generation.
 
-## Tradeoff #9: Extreme run-time performance
+[Cranelift]: todo
+
+In addition to being integrated into `rustc` Cranelift is also being integrated into SpiderMonkey as its WebAssembly code generator.
+
+It's not fair to blame all the code generation slowness on LLVM though. `rustc` isn't doing LLVM any favors by
+the way it generates LLVM IR.
+
+
+## Tradeoff #5: Poor LLVM IR generation
+
+`rustc` is notorious for throwing huge gobs of unoptimized LLVM IR at LLVM and expecting it to optimize it all away. This is (probably) the main reason Rust debug binaries are so slow.
+
+So LLVM is doing a lot of work to make Rust as fast as it is.
+
+This is another problem with the compiler architecture &mdash; it was just easier to create Rust by leaning heavily on LLVM than to be clever about how much info `rustc` handed to LLVM to optimize.
+
+So this can be fixed over time, and it's one of the main avenues the compiler team is pursuing to improve compile-time performance.
+
+Remember earlier the discussion about how monomorphization works? How it duplicates function definitions for every combination of instantiated type parameters? Well, that's not only a source of machine code bloat but also LLVM IR bloat. Every one of those functions is filled with duplicated, unoptimized, LLVM IR.
+
+`rustc` is slowly being modified to such that it can perform its own optimizations on its own MIR (mid-level IR), and crucially, the MIR representation is pre-monomorphization. That means that MIR-level optimizations only need to be done once per generic function, and in turn produce smaller monomorphized LLVM IR, that LLVM can (in theory) translate faster than it does with its unoptimized functions today.
+
+
+## Tradeoff #6: Batch compilation
+
+## Tradeoff #7: Build scripts
+
+## Tradeoff #8: Procedural macros
+
+## Tradeoff #9: Fixed compilation profiles
 
 
 ## All that stuff summarized
