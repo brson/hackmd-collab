@@ -602,6 +602,14 @@ Remember earlier the discussion about how monomorphization works? How it duplica
 
 ## Tradeoff #6: Batch compilation
 
+It turns out that the entire architecture of `rustc` is wrong.
+
+It is common wisdom that all compilers have an architecture like the following:
+
+- the compiler consumes an entire compilation by parsing all of its source code into an AST
+- through a succession of passes, that AST 
+
+
 ## Tradeoff #7: Build scripts
 
 ## Tradeoff #8: Procedural macros
