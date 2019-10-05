@@ -12,13 +12,11 @@ I assert this with high confidence because [I was in the room when the deed was 
 
 We totally got you.
 
-<!--
 ![taunt]
 
-[taunt]: taunt.jpg
+[taunt]: https://brson.github.io/tmp/taunt.jpg
 
-TODO image credit
--->
+<!-- TODO image credit -->
 
 [it]: todo
 [long con]: todo
