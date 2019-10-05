@@ -100,9 +100,9 @@ This is a company that is one of Rust's greatest advocates in Asia.
 
 The first entry in this series is just a story about why Rust compile times suck. Since it might take another entry or two to dive into concrete technical details of what we've done with TiKV's compile times, here's a pretty graph to capture your imagination, without comment.
 
-TODO
+![tikv-compile-timings]
 
-On to the story.
+[tikv-compile-timings]: https://brson.github.io/tmp/tikv-timings.svg
 
 
 ## Part 1: The Rust Compilation Model Calamity
@@ -401,9 +401,25 @@ C++ and Rust both strongly encourage monomorphization, both generate some of the
 
 _The takeaway here is that it is a broadly thought by compiler engineers that monomorphiation results in somewhat faster generic code while taking considerably longer to compile._
 
-Note: the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times by around TODO%. [See issue #TODO][mono-issue] for the current status.
+Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times by around TODO%. [See issue #TODO][mono-issue] for the current status.
 
 [mono-issue]: todo
+
+All that is only touching on the surface of the compile-time complexity introduced by monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
+
+> so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
+>
+> it's also things like foo.bar where the offset of bar depends on the type of foo
+>
+> many languages sidestep this problem by using pointers everywhere (including generic C, if you don't use macros)
+>
+> not to mention the construction of complex types like iterators, that are basically mini-programs fully instantiated and then customizable -- though this *can* be reproduced by a sufficiently smart compiler
+>
+> (in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time, I think strcat was pointing out how virtual call inlining happens relatively late in the pipeline)
+
+TODO: explain the `foo.bar` comment.
+
+[Niko]: todo
 
 
 ## Aside: Generic forms in Rust
@@ -554,7 +570,6 @@ So it's quite desirable for Rust code to be broken into crates that form a _wide
 Probably the biggest reason that Rust crates tend to be large though is because of ...
 
 
-
 ## Tradeoff #3: Trait coherence and the orphan rule
 
 Rust's trait system makes it difficult to make crates into abstraction boundaries because of a thing call the _orphan rule_.
@@ -602,12 +617,40 @@ Remember earlier the discussion about how monomorphization works? How it duplica
 
 ## Tradeoff #6: Batch compilation
 
-It turns out that the entire architecture of `rustc` is wrong.
+It turns out that the entire architecture of `rustc` is "wrong", and so is the architecture of most compilers ever written.
 
 It is common wisdom that all compilers have an architecture like the following:
 
 - the compiler consumes an entire compilation by parsing all of its source code into an AST
-- through a succession of passes, that AST 
+- through a succession of passes, that AST is refined into increasingly detailed data "intermediate representations" (IRs)
+- the entire final IR is passed through a code generator to emit machine code
+
+I am calling this the "batch compilation" model. Maybe that's what others call it. This architecture is vaguelly how compilers have been described academically for decades; it is how most compilers have historically been implemented; and that is how `rustc` was originally architected. But it is not an architecture that well-supports the workflows of modern developers and their IDEs, nor does it support fast recompilation.
+
+Today, developers expect instant feedback about the code they are hacking. When they write a type error, the IDE should immediately put a red squiggle under their code and tell them about it. It should ideally do this even if the source code doesn't completely parse.
+
+The batch compilation model is poorly suited for this. It requires that entire compilation units be re-analyzed for every incremental change to the source code, in order to produce incremental changes to the analysis. In the last decade or so, the thinking among compiler engineers about how to construct compilers has been shifting from batch compilation to "responsive compilation", by which the compiler can run the entire compilation pipeline on the smallest subset of code possible to get a particular answer desired, as quickly as possible. For example, with responsive compilation one can ask "does this function type check?", or "what are the type dependencies of this structure?".
+
+This ability lends itself to the _perception_ of compiler speed, since the user is constantly getting necessary feedback while they work. It can dramatically shorten the feedback cycle for correcting type checking errors, and in Rust, getting the program to successfully type check takes up a huge proportion of developers' time.
+
+I'm sure the prior art is extensive, but a notable modern responsive compiler is the [Roselyn] .NET compiler; and the concept of responive compilers has recently been advanced significantly with the adoption of the [Language Server Protocol][lsp]. Both are Microsoft projects.
+
+In Rust today we support this IDE use case with the [Rust Language Server][RLS] (the RLS). But many Rust developers will know that the RLS experience can be pretty disappointing, with huge latency between typing and getting feedback. Sometimes the RLS fails to find the expected results, or simply fails compeletely. The failures of the RLS are almost entirely due to being built on top of a batch-model compiler, and not a responsive compiler.
+
+Taken to the limit, a responsive compiler architecture naturally lends itself to quickly responding to requests like "regenerate machine code, but only for functions that are changed since the last time the compiler was run". So not only does responsive compilation support the IDE analysis use case, but also the recompile-to-machine-code use case. Today, this second use case is supported in `rustc` with "incremental compilation", but it is fairly crude, with a great deal of duplicated work on every compiler invocation. We should expect that, as `rustc` becomes more responsive, incremental compilation will ultimately do the minimal work possible to recompile only what must be recompiled.
+
+There are though tradeoffs in the quality of machine code generated via incremental compilation &mdash; due to the mysterious challenges of inlining, incrementally-recompiled code is unlikely to ever be as fast as highly-optimized, batch-compiled machine code. In other words, you probably won't ever want to use incremental compilation for your production releases, but it can drastically speed up the development experience, while producing relatively fast code.
+
+Niko spoke about this architecture in his ["Responsive compilers" talk at PLISS 2019][resp]. It is an entirely watchable talk about compiler engineering and I recommend checking it out.
+
+[resp]: https://www.youtube.com/watch?v=N6b44kMS6OM
+[RLS]: todo
+[Roselyn]: https://en.wikipedia.org/wiki/.NET_Compiler_Platform
+[lsp]: todo
+
+In that talk he also provided some examples of how the Rust language was accidentally designed poorly for responsive compilation, which I think is quite illustrative.
+
+TODO
 
 
 ## Tradeoff #7: Build scripts
@@ -641,4 +684,39 @@ This post has been in draft for a long time, and has benefited from the input an
 
 - https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
 - static linking?
+-->
+
+<!--
+
+Niko Matsakis, [19.09.19 17:19]
+so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
+
+Niko Matsakis, [19.09.19 17:19]
+it's also things like foo.bar where the offset of bar depends on the type of foo
+
+Niko Matsakis, [19.09.19 17:19]
+many languages sidestep this problem by using pointers everywhere (including generic C, if you don't use macros)
+
+Niko Matsakis, [19.09.19 17:20]
+not to mention the construction of complex types like iterators, that are basically mini-programs fully instantiated and then customizable -- though this *can* be reproduced by a sufficiently smart compiler
+
+Niko Matsakis, [19.09.19 17:21]
+(in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time, I think strcat was pointing out how virtual call inlining happens relatively late in the pipeline)
+
+Niko Matsakis, [19.09.19 17:21]
+anyway it doesnt' change your basic point
+
+Niko Matsakis, [19.09.19 17:22]
+[In reply to Brian Anderson]
+Hmm. My experience has often been that this is hard in all languages. =) But in (e.g.) Java when I would do it, I often wound up doing a lot of downcasting in the "concrete" impls
+
+Niko Matsakis, [19.09.19 17:23]
+that is, I'd have a bunch of interface types that referenced one another and some class types that implement them, and the class types would depend on private details of one another, so you'd have to downcast
+
+Niko Matsakis, [19.09.19 17:23]
+(that too relies on everything being a pointer)
+
+Niko Matsakis, [19.09.19 17:24]
+the orphan rule is part of it but I don't feel like it's *the* thing
+
 -->
