@@ -116,13 +116,9 @@ So there are intrinsic language-design reasons, and accidental language-design r
 For context, if compilation time was not a core Rust design principle, what were Rust's core design principles? Here are a few:
 
 - Practicality &mdash; it should be a language that can be and is used in the real world.
-
 - Pragmatism &mdash; it should admit concessions to human usability and integration into systems as they exist, instead of attempting to maintain any kind of theoretical purity.
-
 - Memory-safety &mdash; it must enforce memory safety, and not admit segmentation faults and other such memory-access violations.
-
 - Performance &mdash; it must be in the same performance class as C and C++.
-
 - Concurrency &mdash; it must provide modern solutions to writing concurrent code.
 
 But it's not like we didn't put _any_ consideration into fast compile times. For example, for any analysis Rust needs to do, the team tried to ensure it would not suffer from exponential complexity (see e.g. [Swift's accidental exponential type-inference blow-up][sti]). Rust's design history though one of increasingly being sucked into the swamp of poor compile-time performance.
