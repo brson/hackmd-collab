@@ -649,6 +649,18 @@ TODO
 
 ## Tradeoff #7: Build scripts
 
+Build scripts are a source of non-determinism in the build process. Cargo hands control over to an arbitrary program that can do anything it wants,
+which can have arbitrary effects on downstream compilation steps.
+
+The main negative effect for build times is that, I believe, crates that contain build scripts are essentially uncacheable. Imagine if a distributed build tool like [sccache] gets a request to build a crate with a build script. It might have output artifacts cached for that crate, but it can not know whether rebuilding the crate will result in the same artifacts.
+
+TODO verify this
+
+[sccache]: todo
+
+Aside: the dynamism of build scripts is one of the main cargo features that frustrates teams trying to integrate Rust into existing systems. Without build scripts, the build "plan" for any Rust project is entirely static and can e.g. be exported in a format that other build systems can integrate. Build scripts though can do anything and introduce changes to the build plan as it is running. They are very cargo-specific.
+
+
 ## Tradeoff #8: Procedural macros
 
 ## Tradeoff #9: Fixed compilation profiles
