@@ -682,6 +682,8 @@ This post has been in draft for a long time, and has benefited from the input an
 
 <!--
 
+## Niko conversation
+
 Niko Matsakis, [19.09.19 17:19]
 so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
 
@@ -712,5 +714,143 @@ Niko Matsakis, [19.09.19 17:23]
 
 Niko Matsakis, [19.09.19 17:24]
 the orphan rule is part of it but I don't feel like it's *the* thing
+
+Brian Anderson, [05.10.19 17:06]
+[In reply to Niko Matsakis]
+does this only come in to play with associated types?
+
+Niko Matsakis, [05.10.19 20:06]
+no
+
+Niko Matsakis, [05.10.19 20:06]
+struct Foo<T> { x: u32, y: T, z: f64 }
+
+Niko Matsakis, [05.10.19 20:06]
+fn bar<T>(f: Foo<T>) -> f64 { f.z }
+
+Niko Matsakis, [05.10.19 20:07]
+as I recall, before we moved to monomorphization, we had to have two paths for everything: the easy, static path, where all types were known to LLVM, and the horrible, dynamic path, where we had to generate the code to dynamically compute the offsets of fields and things
+
+Niko Matsakis, [05.10.19 20:07]
+unsurprisingly, the two were only rarely in sync
+
+Niko Matsakis, [05.10.19 20:07]
+which was a common source of bugs
+
+Niko Matsakis, [05.10.19 20:07]
+I think a lot of this could be better handled today -- we have e.g. a reasonably reliable bit of code that computes Layout, we have MIR which is a much simpler target -- so I am not as terrified of having to have those two paths
+
+Niko Matsakis, [05.10.19 20:08]
+but it'd still be a lot of work to make it all work
+
+Niko Matsakis, [05.10.19 20:08]
+there was also stuff like the need to synthesize type descriptors on the fly (though maybe we could always get by with stack allocation for that)
+
+Niko Matsakis, [05.10.19 20:08]
+e.g., fn foo<T>() { bar::<Vec<T>>(); } fn bar<U>() { .. }
+
+Niko Matsakis, [05.10.19 20:09]
+here, you have a type descriptor for T that was given to you dynamically, but you have to build the type descriptor for Vec<T>
+
+Niko Matsakis, [05.10.19 20:09]
+and then we can make it even worse
+
+Niko Matsakis, [05.10.19 20:09]
+fn foo<T>() { bar::<Vec<T>>(); } fn bar<U: Debug>() { .. }
+
+Niko Matsakis, [05.10.19 20:09]
+now we have to reify all the IMPLS of Debug
+
+Niko Matsakis, [05.10.19 20:09]
+so that we can do trait matching at runtime
+
+Niko Matsakis, [05.10.19 20:09]
+because we have to be able to figure out Vec<T>: Debug, and all we know is T: Debug
+
+Niko Matsakis, [05.10.19 20:10]
+we might be able to handle that by bubbling up the Vec<T> to our callers...
+
+-->
+
+<!--
+
+## Graydon conversation
+
+brson: Do you remember why rust crates must form a dag? Niko doesn't seem to remember the original reason
+
+graydon: Couple reasons
+
+graydon: Prohibits mutual recursion between definitions across crates, allowing both an obvious deterministic bottom-up build schedule without needing to do some fixpoint iteration or separate declarations from definitions
+and enables phases that need to traverse a complete definition, like typechecking, to happen crate-at-a-time (enabling _some_ degree of incrementality / parallelism).
+
+graydon: (once you know you've seen all the cycles in a recursive type you can check it for finiteness and then stop expanding it at any boxed variants -- even if they cross crates -- and put a lazy / placeholder definition in those boxed edges; but you need to know those variants don't cycle back!)
+
+graydon: (I do not know if rustc does anything like this anymore)
+
+graydon: cyclicality concerns are even worse with higher order modules, which I was spending quite a lot of time studying when working on the early design. most systems I've seen require you to paint some kind of a boundary around a group of mutually-recursive definitions to be able to resolve them, so the crate seemed like a natural unit for that.
+
+graydon: then there is also the issue of versioning, which I think was pretty heavy in my mind (especially after the experience with monotone and git): a lot of versioning questions don't really make sense without acyclic-by-construction references. Like if A 1.0 depends on B 1.0 which depends on A 2.0 you, again, need to do something weird and fixpointy and potentially quite arbitrary and hard to explain to anyone in order to resolve those dependencies.
+
+graydon: also recall we wanted to be able to do hot code loading early on, which means that much like version-resolving, compiling or linking, your really in a much simpler place if there's a natural topological order to which things you have to load or unload. you can decide whether a crate is still live just by reference-counting, no need to go figure out cyclical dependencies and break them in some random order, etc.
+
+graydon: I'm not sure which if any of these was the dominant concern. If I had to guess I'd say avoiding problems with separate compilation of recursive definitions and managing code versioning. recall the language in the manual / the rationale for crates: "units of compilation and versioning". Those were the consideration for their existence as separate from modules. Modules get to be recursive. Crates, no. Because of things to do with "compilation and versioning".
+
+brson: I'm building a list of ways that rusts design discourages fast compilation
+
+brson: The crate dag is something in thinking about, but I think it's really trait coherence that makes crate decomposition so hard
+
+brson: Hard to break down rusts huge compilation units, and even when you do, more crates create new compile time tradeoffs
+
+graydon: Yeah. I think there's a pretty long list. The original design compiled pretty fast but we kept making choices that traded off compile time for something else
+
+graydon: (I don't mean to be some asshole who pretends the original design got it all right -- I know it was too slow and the choices we made along the way were all well-justified on their own -- just that some of the design choices that were compile-speed-focused wound up not really mattering given later choices. like you can't do nearly as much per-crate stuff as initially. cross-crate inlining and monomorphization really makes the whole crate model a little dubious. and it's not like we do hot code loading or even ABI-safe relinking without total recompilation now anyways.)
+
+graydon: (was too slow => the runtime perf of the dynamic-polymorphic code was too slow. compile time was fast! haha)
+
+graydon: honestly I'm not sure if there's a better answer in the systems niche aside from something like what rust is moving towards: a big soup of definitions with a many-layered stack of memoizing queries on top.
+
+graydon: runtime perf is something nobody is willing to trade-away even the slightest bit of. so anything that could act as a "compiler firewall" (as C++ people call boxing / uniform representation idioms) is mostly rejected on principle.
+
+graydon: I think modern c patterns make different tradeoffs - much more dynamic dispatch in c than c++/rust and nobody's complaining
+
+graydon: to an extent I agree. it's tricky to get just right. that was certainly the argument I made to myself when initially designing the generics system! it's even there in the notes: "kernel people use virtual dispatch for everything and seem not to mind"
+
+brson: I'd like to see good numbers on the tradeoffs involved in all the monomorphization code duplication
+
+brson: I doubt anybody had studied it deeply
+
+graydon: but they also use fewer layers of abstraction and a fair number of inline functions and macros. maybe just giving them the toolset with very clear control over the phase distinction is best.
+
+graydon: I got the impression watching objc programmers that simply having a clear cost model in the "C parts" and the "dynamic OO messaging parts" meant they could balance the thing themselves pretty well.
+
+graydon: yeah I agree I think it's only lightly studied
+
+graydon: I was hoping boxed object types in rust would also get more love, but it's not _just_ representation, it's also type erasure (bounded universal vs. existential) which winds up not really substitutable at the API level.
+
+graydon: Having better control over static vs dynamic dispatch is probably my biggest wish for rust++
+
+graydon: We tried in rust but the balance is heavy for monomorphization
+
+graydon: swift doesn't give you _control_ over it but it does have a dial that the compiler and its optimizers freely turns between the different points on the spectrum
+
+graydon: yeah. and in rust that had significant downstream implications like "we generate bad LLVM code to begin with, so now we generate WAY TOO MUCH of that bad code". and like the duplicate-instance-elimination stuff .. I'm not sure if it ever got done or paid off, I remember you were working on it but that seems costly too.
+
+graydon: *shrug* I mean I don't think rust did too bad. there are obvious places to go back and try again but it planted a pretty good stake in the ground :)
+
+graydon: (when I use it, honestly the thing that pisses me off the most is not the compile times, though they are annoying; it's the trait tetris. I waste hours and hours trying to figure out the right factoring to work with the grain of the rules, make a set of traits that "works right" together and with other libs. invariably seem to fall back on macros.)
+
+graydon: Niko has estimates about how much work the generic dedupe would save, and it's more modest than I would expect
+
+graydon: mhm. I expect also there's a degree to which generic de-duplication interacts poorly with the "no indirection" idiom: everything's representationally-specialized to its arguments in such a way that it can't be reused with other arguments.
+
+graydon: LLVM gained an interesting pass recently called "outlining", did you see it?
+
+graydon: might not help much with compile times -- it's quite late in the passes for rust -- but it might make binaries smaller. and maybe if you spend all your time in DAGIsel it'd cut down on codegen, idk.
+
+graydon: https://www.youtube.com/watch?v=naF9r8O_3aY
+
+graydon: eh, it's not a game-changing size win anyway
+
+graydon: idk lately I've got interested in array languages which have such a different code pattern they're almost incomparable. everything is SoA to an extent that you literally precompile the loops into the runtime once for each combination of scalar types, and then they're always 100% reused. super weird world.
 
 -->
