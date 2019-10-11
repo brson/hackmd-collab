@@ -689,6 +689,7 @@ This post has been in draft for a long time, and has benefited from the input an
 ### TODO
 
 - https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
+- https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
 - static linking?
 -->
 
