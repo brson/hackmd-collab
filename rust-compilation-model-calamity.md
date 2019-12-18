@@ -6,20 +6,7 @@
 
 _The Rust programming language was designed for slow compilation times._
 
-I assert this with high confidence because [I was in the room when the deed was done][it]. This whole Rust thing is all a [long con] the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your mission-critical products, and we'll slow your developers' productivity to a crawl.
-
-<!-- TODO use the argument from authority above or no? -->
-
-We totally got you.
-
-![taunt]
-
-[taunt]: https://brson.github.io/tmp/taunt.jpg
-
-<!-- TODO image credit -->
-
-[it]: todo
-[long con]: todo
+This whole Rust thing is all a con the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your mission-critical products, and we'll slow your developers' productivity to a crawl.
 
 Am I joking? I don't know. What even is anything anymore, anyway?
 
@@ -30,22 +17,20 @@ I do know one thing though…
 
 If you are reading this you probably know it too. We all know it. We mostly hate it.
 
-I know it because nearly every Rust production user I talk to says it is _the thing_ they dislike the most about the language. I know it because so many of us indicated so [in the Rust 2019 survey][sur].
+I know it because I encounter it every day. I know it because my coworkers complain about it. I know it because the Rust production users I talk to consistently mention it. I know it because so many of us indicated so [in the last Rust survey][sur].
 
-[sur]: todo
+[sur]: https://blog.rust-lang.org/2018/11/27/Rust-survey-2018.html#challenges
 
 This is kinda infuriating, as almost everything that matters about Rust is pretty damn good. But Rust compile times are so, so bad.
 
-Rust compile times are its biggest weakness.
+Rust compile times are perhaps its biggest weakness.
 
-At [PingCAP], we develop our distributed storage system, [TiKV], in Rust, and it compiles slow enough to discourage many in the company from using Rust. I recently spent some time ("some time" being months and months upon increasing months), along with several others on the TiKV team and its wider community, investigating TiKV's pitiable compile times.
+At [PingCAP], we develop our distributed storage system, [TiKV], in Rust, and it compiles slow enough to discourage many in the company from using Rust. I recently spent some time ("some time" being months and months upon increasing months), along with several others on the TiKV team and its wider community, investigating TiKV's compile times.
 
-[PingCAP]: todo
-[TiKV]: todo
+[PingCAP]: https://pingcap.com/en/
+[TiKV]: github.com/tikv/tikv/
 
-Over a series of posts I'll discuss what we have learned (maybe &mdash; maybe I'll just lazy and leave you wondering forever): why compiling Rust is slow, and/or feels slow; compile-time use cases; things we measured; things we want to measure but haven't or don't know how; ideas that improved compile times; ideas that did not improve compile times; how TiKV compile times have changed over time; suggestions for how to organize Rust projects that compile fast; and recent and future upstream improvements to compile times.
-
-<!-- TODO: "maybe I'll just lazy" is hard to parse but I like it! cc @dcalvin -->
+Over a series of posts I'll discuss what we have learned (maybe &mdash; maybe I'll just leave you wondering forever): why compiling Rust is slow, and/or feels slow; compile-time use cases; things we measured; things we want to measure but haven't or don't know how; ideas that improved compile times; ideas that did not improve compile times; how TiKV compile times have changed over time; suggestions for how to organize Rust projects that compile fast; and recent and future upstream improvements to compile times.
 
 In this episode:
 
@@ -78,16 +63,16 @@ At [PingCAP], my colleagues write [TiKV], the storage node of our distributed da
 
 It was mostly a great decision, and most people internally are mostly happy about it.
 
-But many complain about how long it takes to build. For some a full rebuild might take ~15 minutes in development mode, and ~30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what most developers are used to out of modern programming languages. TiKV is not even a particularly large system, with TODO total lines of Rust code. Building [Servo] or [Rust itself][r] is much, much more unpleasant.
+But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming languages. TiKV is not even a particularly large system, with TODO total lines of Rust code. Building [Servo] or [Rust itself][r] is much, much more unpleasant.
 
-[Servo]: todo
-[r]: todo
+[Servo]: https://github.com/servo/servo
+[r]: github.com/rust-lang/rust/
 
-Other nodes in the system are written in Go, which of course comes with a different set of advantages and disadvantages from Rust. The Go developers at PingCAP kinda hate and resent having to wait for the Rust components to build. They are used to a rapid build-test cycle.
+Other nodes in the system are written in Go, which of course comes with a different set of advantages and disadvantages from Rust. Some of the Go developers at PingCAP kinda hate and resent having to wait for the Rust components to build. They are used to a rapid build-test cycle.
 
-Rust developers on the other hand are used to taking a lot of coffee breaks. (Or tea, or cigarettes, or sobbing, or whatever, as the case may be &mdash; Rust developers have the spare time to nurse their personal demons real good.)
+Rust developers on the other hand are used to taking a lot of coffee breaks. (Or tea, or cigarettes, or sobbing, or whatever, as the case may be &mdash; Rust developers have plenty of spare time to nurse their personal demons.)
 
-_Internally at PingCAP, new code that would be appropriate to write in Rust is often written in Go, only because of the spectre of terrible compile times_.
+_Internally at PingCAP, new code that would be appropriate to write in Rust is sometimes written in Go, only because of the spectre of terrible compile times_.
 
 <!-- TODO: can the above be backed up with an example if asked? -->
 
@@ -113,7 +98,7 @@ The intentional run-time / compile-time tradeoff isn't the only reason Rust comp
 
 So there are intrinsic language-design reasons, and accidental language-design reasons for Rust's bad compile times. Those mostly can't be fixed ever (though they may be mitigated by compiler improvements, design patterns, and language evolution). There are also accidental compiler-architecture reasons for Rust's bad compile times, which can generally be fixed through enormous engineering effort and time.
 
-For context, if compilation time was not a core Rust design principle, what were Rust's core design principles? Here are a few:
+If compilation time was not a core Rust design principle, what were Rust's core design principles? Here are a few:
 
 - Practicality &mdash; it should be a language that can be and is used in the real world.
 - Pragmatism &mdash; it should admit concessions to human usability and integration into systems as they exist, instead of attempting to maintain any kind of theoretical purity.
@@ -121,13 +106,9 @@ For context, if compilation time was not a core Rust design principle, what were
 - Performance &mdash; it must be in the same performance class as C and C++.
 - Concurrency &mdash; it must provide modern solutions to writing concurrent code.
 
-But it's not like we didn't put _any_ consideration into fast compile times. For example, for any analysis Rust needs to do, the team tried to ensure it would not suffer from exponential complexity (see e.g. [Swift's accidental exponential type-inference blow-up][sti]). Rust's design history though one of increasingly being sucked into the swamp of poor compile-time performance.
-
-<!-- TODO: discuss the dangers of exponential complexity and how it happens? -->
+But it's not like they didn't put _any_ consideration into fast compile times. For example, for any analysis Rust needs to do, the team tried to ensure it would not suffer from exponential complexity. Rust's design history though one of increasingly being sucked into the swamp of poor compile-time performance.
 
 Story time.
-
-[sti]: todo
 
 
 ## Bootstrapping Rust
@@ -136,17 +117,17 @@ I don't remember when I realized that Rust's bad compile times were a strategic 
 
 <!-- TODO dcalvin doesn't like "and like, whatever" -->
 
-When I worked on Rust heavily it was common for me to have at least three copies of the repository on the computer, hacking on one while all the others were building and testing. I would start building workspace 1, switch screen/tmux tabs, remember what's going on over here in workspace 2, hack on that for a while, start building in workspace 2, switch tabs, etc. Little flow, constant context switching.
+When I worked on Rust heavily it was common for me to have at least three copies of the repository on the computer, hacking on one while all the others were building and testing. I would start building workspace 1, switch terminals, remember what's going on over here in workspace 2, hack on that for a while, start building in workspace 2, switch terminals, etc. Little flow, constant context switching.
 
 This was (and probably is) typical of other Rust developers too.
 
-(*) OK, Rust's compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], written in [OCaml], had extremely simple static analysis, and extremely naive code generation. It still builds today. Check it out if you're curious. I just did:
+(*) OK, Rust's compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], called `rustboot`, written in OCaml, had extremely simple static analysis, and extremely naive code generation. Here's how long it takes to build:
 
 ```
 TODO
 ```
 
-Only TODO minutes. Oh those halcyon days. For comparison here's a build of [today's compiler][tc] (as of TODO):
+That's only TODO minutes. For comparison here's a build of [today's compiler][tc] (as of December 2019):
 
 ```
 TODO
@@ -156,37 +137,36 @@ Lol. Just lol. The comparison is completely unfair, for reasons. But lol, right?
 
 <!-- TODO: maybe a small gif here? -->
 
-[frc]: todo
-[OCaml]: todo
-[tc]: todo
+[frc]: https://github.com/rust-lang/rust/commit/d6b7c96c3eb29b9244ece0c046d3f372ff432d04
+[tc]: https://github.com/rust-lang/rust/commit/3ed3b8bb7b100afecf7d5f52eafbb70fec27f537
 [yonder]: todo
 
-One of the immediate tasks upon Rust's initial open-sourcing in 2010 was to make it _self-hosting_ &mdash; that is, to rewrite the Rust compiler (`rustc`) in Rust. The Rust version of `rustc`, in addition to being written in Rust, would also use [LLVM] as its backend for generating machine code, instead of OCaml-`rustc`'s hand-written x86-specific code-generator.
+One of the immediate tasks upon Rust's initial open-sourcing in 2010 was to make it _self-hosting_ &mdash; that is, to write a Rust compiler in Rust. `rustc`, in addition to being written in Rust, would also use [LLVM] as its backend for generating machine code, instead of `rustboot`s hand-written x86 code-generator.
 
-Rust needed to become self-hosting as a means of "dog-fooding"
+Rust needed to become self-hosting as a means of "dog-fooding" the language &mdash; writing the Rust compiler in Rust meant that the Rust authors needed to use their own language to write practical software, early in the language design process.
 
-[LLVM]: todo
+[LLVM]: https://llvm.org/
 
-The first time Rust built itself was on TODO. [It took TODO hours][self-host].
+The first time Rust built itself was on April 20, 2011. [It took one hour][self-host], which was a laughably long time. At least it was back then.
 
-[self-host]: todo
+[self-host]: https://mail.mozilla.org/pipermail/rust-dev/2011-April/000330.html
 
 That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the OCaml-`rustc`][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations. To compare with the previously-presented build times, that commit that drops OCaml bootstraps in TODO minutes under the same environment ([logs]).
 
-[nocaml]: todo
+[nocaml]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
 [logs]: todo
 
-This is where the long, gruelling history of Rust's tragic compile time began, TODO months after it was initially released in July 2010.
+This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
 
 ---
 
 Note that it is not actually fair to compare Rust's own compile time to the compile time of Rust programs generally, but it is fun because the Rust build takes so hilariously long.
 
-The reason for this is that Rust has to build itself 3 times to prove that it is self hosting. It does this in 3 "stages":
+Part of the reason for this is that Rust has to build itself 3 times to prove that it is self hosting. It does this in 3 "stages":
 
 - _stage0_ - build from the previous release's binary. This proves that previous-Rust can build current-Rust.
 
-- _stage1_ - build from current-Rust as built by previous-Rust. This proves that current-Rust can build current-Rust, but not that current-Rust (or next-Rust) built by current-Rust works (can build next-Rust).
+- _stage1_ - build from current-Rust as built by previous-Rust. This proves that current-Rust can build current-Rust, but not that current-Rust-built-by-current-Rust works can build current-Rust (or next-Rust).
 
 - _stage2_ - build from current-Rust as built by current-Rust. This proves that current-Rust can build a working current-Rust (or next-Rust), and that the self-hosting cycle will continue.
 
@@ -199,17 +179,24 @@ The details of how Rust's stages interact is fairly complex, but this explains t
 
 In the Rust project we like processes that reinforce and build upon themselves. This is one of the keys to Rust's success, both as a language and community.
 
-As an obvious, hugely-successful example, consider [Servo]. Servo is a web browser built in Rust (technically it's still just a browser "engine"), and Rust was created with the explicit purpose of building Servo.
+As an obvious, hugely-successful example, consider [Servo]. Servo is a web browser built in Rust (officially it's just a browser "engine"), and Rust was created with the explicit purpose of building Servo.
 
 Rust and Servo are sister-projects. They were created by the same team (initially), at roughly the same time, and they evolved together. Not only was Rust built to create Servo, but Servo was built to inform the design of Rust.
 
-The initial few years of both projects were extremely difficult, with both projects evolving in parallel. The metaphor of the [Ship of Theseus][st] comes to mind: we were constantly rebuilding the ship we were sailing, constantly rebuilding Rust in order to sail the Servo ship. There is no doubt that the experience of building Servo with Rust while simultaneously building Rust itself led directly to many of the good decisions that make Rust the practical language it is.
+The initial few years of both projects were extremely difficult, with both projects evolving in parallel. The often-used metaphor of the [Ship of Theseus][st] is apt: we were constantly rebuilding the ship we were sailing, constantly rebuilding Rust in order to sail the seas of Servo. There is no doubt that the experience of building Servo with Rust while simultaneously building Rust itself led directly to many of the good decisions that make Rust the practical language it is.
 
 [st]: https://en.wikipedia.org/wiki/Ship_of_Theseus
 
-As just one example of the Servo-Rust feedback loop, the decision to [drop green threading][gt] from Rust was heavily informed by the huge amount of FFI required to integrate SpiderMonkey into Servo, and green threading kills FFI performance. In fairness though, not everyone one the Servo team was thrilled about this Rust decision at the time, since it made writing massively-multithreaded code more challenging, though I hope they agree in retrospect that it was the right one.
+Some examples of the Servo-Rust feedback loop,
 
-[gt]: todo
+- Labeled break and continue [was implemented in order to auto-generate an HTML parser][lbc].
+- Owned closures [were implemented after analyzing closure usage in Servo][oc].
+- Extern function calls used to be considered safe. [This changed in part due to experience in Servo][nu].
+- The migration from green-threading to native threading was heavily informed by the experience of building Servo, observing the FFI overhead of Servo's SpiderMonkey integration, and profiling "hot splits", where the green thread stacks needed to be expanded and contracted.
+
+[lbc]: https://github.com/rust-lang/rust/issues/2216
+[oc]: https://github.com/rust-lang/rust/issues/2549#issuecomment-19588158
+[nu]: https://github.com/rust-lang/rust/issues/2628#issuecomment-9384243
 
 The co-development of Rust and Servo created a [virtuous cycle] that allowed both projects to thrive. Today, Servo components are deeply integrated into Firefox, ensuring that Rust cannot die while Firefox lives.
 
@@ -219,17 +206,17 @@ Mission accomplished.
 
 The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration, making WASM an excellent platform for running Rust, and Rust the first language beyond C and C++ with decent WASM support.
 
-[WebAssembly]: todo
+[WebAssembly]: https://webassembly.org/
 
 Sadly there was no such reinforcement to drive down compile times. The opposite is probably true: the more Rust became known as a "fast" language the more important it was to be "the fastest" language; and the more Rust's developers got used to developing their Rust projects across multiple branches, context switching between tasks as I described earlier, the less pressure was felt to address compile times.
 
 That is, until Rust was actually released to production and met by a wide audince that was not used to such abhorrent compile times.
 
-For years Rust [slowly boiled][boil] in its own poor compile times, not realizing how bad it had gotten until it was too late. It was 1.0. Those decisions were locked in. It was boiled.
+For years Rust [slowly boiled][boil] in its own poor compile times, not realizing how bad it had gotten until it was too late. It was 1.0. Those decisions were locked in. Rust was boiled.
 
 [boil]: https://en.wikipedia.org/wiki/Boiling_frog
 
-A lot of metaphores in this section! Sorry, I'm not usually like that.
+Too many metaphores in this section. Sorry.
 
 
 ## A brief aside about compile-time scenarios
@@ -245,7 +232,7 @@ The "development profile" entails compiler settings designed for fast compile ti
 
 A full rebuild is building the entire project from scratch, and a partial rebuild happens after modifying code in a previously built project. Partial rebuilds can notably benefit from [incremental compilation][ic].
 
-[ic]: todo
+[ic]: https://rust-lang.github.io/rustc-guide/queries/incremental-compilation.html
 
 In addition to those there are also
 
@@ -256,13 +243,14 @@ In addition to those there are also
 
 These are mostly similar to development mode and release mode respectively, though the interactions in cargo between development / test and release / bench can be subtle and surprising. There may be other profiles (TiKV has more), but those are the obvious ones for Rust, as built-in to cargo. Beyond that there are other scenarios, like typechecking only (`cargo check`), building just a single project (`cargo build -p`), single-core vs. multi-core, local vs. distributed, local vs. CI.
 
-Compile time is also affected by human perception &mdash; it's possible for compile time to feel bad when it's actually decent, and to feel decent when it's actually not so great. This is one of the premises behind the [Rust Language Server][RLS] (RLS) &mdash; if developers are getting constant, real-time feedback about type errors in your IDE then it doesn't matter so much how long a full compile takes.
+Compile time is also affected by human perception &mdash; it's possible for compile time to feel bad when it's actually decent, and to feel decent when it's actually not so great. This is one of the premises behind the [Rust Language Server][RLS] (RLS) and [rust-analyzer] &mdash; if developers are getting constant, real-time feedback in their IDE then it doesn't matter so much how long a full compile takes.
 
-[RLS]: todo
+[RLS]: https://github.com/rust-lang/rls
+[rust-analyzer]: https://github.com/rust-analyzer/rust-analyzer
 
 So it's important to keep in mind through this series that there is a spectrum of semi-tunable possibilities from "fast compile/slow run" to "fast run/slow compile", there are different scenarios that affect compile time in different ways, and in which compile time affects perception in different ways, and that there are psychological factors at play.
 
-It happens that for TiKV we've identified that the scenario we care most about with respect to compile time is "release profile / partial rebuilds". This also happens to be the scenario with the hardest tradeoffs and the least room for improvement. Yay. More about that in future installments.
+It happens that for TiKV we've identified that the scenario we care most about with respect to compile time is "release profile / partial rebuilds". More about that in future installments.
 
 
 ## Rust's designs for poor compile time
@@ -274,7 +262,7 @@ The rest of this post details some of the biggest reasons that Rust's intrinsic 
 
 Rust's approach to generics is the most obvious language feature to blame on bad compile times, and understanding how Rust translates generic functions to machine code is important to understanding the Rust compile-time/run-time tradeoff.
 
-Generics generally are a complex topic, and Rust generics come in a number of forms that I'm not going to explore in-depth here. Rust has generic types, generic functions, and generic methods. For simplicity, we'll discuss generic functions, but they all are essentially the same (functions are effectively methods without a self-type, and generic types force all their methods to be generic).
+Generics generally are a complex topic, and Rust generics come in a number of forms that I'm not going to explore in-depth here. Rust has generic functions and generic types. For simplicity, we'll discuss generic functions only, but there are further compile-time considerations for generic types.
 
 As an example, consider the following `ToString` trait and the generic function `print`:
 
@@ -307,7 +295,7 @@ Again, _in general_, for programming languages, there are two ways to translate 
 
 ["vtable"]: todo
 
-The first results in static method dispatch, the second in dynamic (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea. You can think of the word as meaning that the generic function representing multiple implementations (or forms) is translated such that each form is implemented by its own instance, each instance a single form. "Single form" &mdash; "mono morph". Ugh, I can't even explain it clearly. Horrible smarty-pants word.
+The first results in static method dispatch, the second in dynamic (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
 
 Again to make this concrete, imagine a hand-translation of both the static dispatch and dynamic dispatch strategies for our two `print` instantiations. These are just illustrative examples, and not what the compiler actually produces.
 
@@ -339,13 +327,14 @@ In the first, there's no indirection, but two `print` functions; in the second t
 
 To make things real, let's also look at what the Rust compiler actually emits for these two cases.
 
-First, a real Rust static dispatch test case:
+First, a real Rust static dispatch test case ([playground link][pl1]):
+
+[pl1]: https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=96f4dfbe0b1e669a700ea2112eb02cdd
 
 ```rust
-trait ToString {
-    fn to_string(&self) -> String;
-}
+use std::string::ToString;
 
+#[inline(never)]
 fn print<T: ToString>(v: T) {
      println!("{}", v.to_string());
 }
@@ -356,71 +345,242 @@ fn main() {
 }
 ```
 
-And now, a real Rust dynamic dispatch test case:
+And now, a real Rust dynamic dispatch test case ([playground link][pl2]):
+
+[pl2]: https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=d359d0440acaeed1d25020955979b9ce
 
 ```rust
-trait ToString {
-    fn to_string(&self) -> String;
-}
+use std::string::ToString;
 
+#[inline(never)]
 fn print(v: &dyn ToString) {
      println!("{}", v.to_string());
 }
 
 fn main() {
-  print("hello, world");
-  print(101);
+  print(&"hello, world");
+  print(&101);
 }
 ```
 
 A selection of the assembly for the static case:
 
 ```
-TODO
+_ZN10playground5print17ha0649f845bb59b0cE:
+	pushq	%r15
+	pushq	%r14
+	pushq	%r12
+	pushq	%rbx
+	subq	$120, %rsp
+	movl	$101, 28(%rsp)
+	leaq	28(%rsp), %rax
+	movq	%rax, 104(%rsp)
+	movq	$1, (%rsp)
+	xorps	%xmm0, %xmm0
+	movups	%xmm0, 8(%rsp)
+	leaq	104(%rsp), %rax
+	movq	%rax, 32(%rsp)
+	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17hf85bec40266d54a0E(%rip), %rax
+	movq	%rax, 40(%rsp)
+	movq	%rsp, %r15
+	movq	%r15, 112(%rsp)
+	leaq	.L__unnamed_3(%rip), %rax
+	movq	%rax, 56(%rsp)
+	movq	$1, 64(%rsp)
+	movq	$0, 72(%rsp)
+	leaq	32(%rsp), %r12
+	movq	%r12, 88(%rsp)
+	movq	$1, 96(%rsp)
+	leaq	.L__unnamed_2(%rip), %rsi
+	leaq	112(%rsp), %rdi
+	leaq	56(%rsp), %rdx
+	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
+	testb	%al, %al
+	jne	.LBB12_2
+	movq	8(%rsp), %rsi
+	movq	16(%rsp), %rbx
+	cmpq	%rbx, %rsi
+	je	.LBB12_18
+	jb	.LBB12_9
+	testq	%rbx, %rbx
+	je	.LBB12_7
+	movq	(%rsp), %rdi
+	movl	$1, %edx
+	movq	%rbx, %rcx
+	callq	*__rust_realloc@GOTPCREL(%rip)
+	testq	%rax, %rax
+	je	.LBB12_12
+	movq	%rax, %r14
+	jmp	.LBB12_17
+
+<... more asm omitted ...>
+
+_ZN10playground5print17hffa7359fe88f0de2E:
+	pushq	%r15
+	pushq	%r14
+	pushq	%r12
+	pushq	%rbx
+	subq	$136, %rsp
+	leaq	.L__unnamed_8(%rip), %rax
+	movq	%rax, 120(%rsp)
+	movq	$12, 128(%rsp)
+	leaq	120(%rsp), %rax
+	movq	%rax, 104(%rsp)
+	movq	$1, 8(%rsp)
+	xorps	%xmm0, %xmm0
+	movups	%xmm0, 16(%rsp)
+	leaq	104(%rsp), %rax
+	movq	%rax, 32(%rsp)
+	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17h09f612f58a92f16cE(%rip), %rax
+	movq	%rax, 40(%rsp)
+	leaq	8(%rsp), %r15
+	movq	%r15, 112(%rsp)
+	leaq	.L__unnamed_3(%rip), %rax
+	movq	%rax, 56(%rsp)
+	movq	$1, 64(%rsp)
+	movq	$0, 72(%rsp)
+	leaq	32(%rsp), %r12
+	movq	%r12, 88(%rsp)
+	movq	$1, 96(%rsp)
+	leaq	.L__unnamed_2(%rip), %rsi
+	leaq	112(%rsp), %rdi
+	leaq	56(%rsp), %rdx
+	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
+	testb	%al, %al
+	jne	.LBB13_2
+	movq	16(%rsp), %rsi
+	movq	24(%rsp), %rbx
+	cmpq	%rbx, %rsi
+	je	.LBB13_18
+	jb	.LBB13_9
+	testq	%rbx, %rbx
+	je	.LBB13_7
+	movq	8(%rsp), %rdi
+	movl	$1, %edx
+	movq	%rbx, %rcx
+	callq	*__rust_realloc@GOTPCREL(%rip)
+	testq	%rax, %rax
+	je	.LBB13_12
+	movq	%rax, %r14
+	jmp	.LBB13_17
+
+<... more asm omitted ...>
+
+_ZN10playground4main17h6b41e7a408fe6876E:
+	pushq	%rax
+	callq	_ZN10playground5print17hffa7359fe88f0de2E
+	popq	%rax
+	jmp	_ZN10playground5print17ha0649f845bb59b0cE
 ```
 
 And the dynamic case:
 
 ```
-TODO
+_ZN10playground5print17h796a2cdf500a8987E:
+	pushq	%rbx
+	subq	$96, %rsp
+	movq	%rsi, %rax
+	movq	%rdi, %rsi
+	leaq	24(%rsp), %rbx
+	movq	%rbx, %rdi
+	callq	*24(%rax)
+	movq	%rbx, 8(%rsp)
+	leaq	_ZN60_$LT$alloc..string..String$u20$as$u20$core..fmt..Display$GT$3fmt17h6d6512069e6d4207E(%rip), %rax
+	movq	%rax, 16(%rsp)
+	leaq	.L__unnamed_7(%rip), %rax
+	movq	%rax, 48(%rsp)
+	movq	$2, 56(%rsp)
+	movq	$0, 64(%rsp)
+	leaq	8(%rsp), %rax
+	movq	%rax, 80(%rsp)
+	movq	$1, 88(%rsp)
+	leaq	48(%rsp), %rdi
+	callq	*_ZN3std2io5stdio6_print17heec45c591c88165dE@GOTPCREL(%rip)
+	movq	32(%rsp), %rsi
+	testq	%rsi, %rsi
+	je	.LBB16_3
+	movq	24(%rsp), %rdi
+	movl	$1, %edx
+	callq	*__rust_dealloc@GOTPCREL(%rip)
+
+<... more asm omitted ...>
+
+_ZN10playground4main17h6b41e7a408fe6876E:
+	pushq	%rax
+	leaq	.L__unnamed_8(%rip), %rdi
+	leaq	.L__unnamed_9(%rip), %rsi
+	callq	_ZN10playground5print17h796a2cdf500a8987E
+	leaq	.L__unnamed_10(%rip), %rdi
+	leaq	.L__unnamed_11(%rip), %rsi
+	popq	%rax
+	jmp	_ZN10playground5print17h796a2cdf500a8987E
 ```
 
 OK, sure enough, we can see the same pattern: in the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers, and only one `print` function.
 
 These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
 
-It is often thought that the static dispatch strategy results in faster machine code, though as far as I know there is little, if any, research into the matter. Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a few factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so once a function pointer has been used once it is likely to be called quickly the next time; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which puts great pressure on the CPU's instruction cache.
+It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter. Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so once a function pointer has been used once it is likely to be called quickly the next time; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which puts great pressure on the CPU's instruction cache.
 
 C++ and Rust both strongly encourage monomorphization, both generate some of the fastest machine code of any programming language, and both have problems with code bloat. This seems to be evidence that the monomorphization strategy is indeed the faster of the two. There is though a curious counter-example: C. C has no generics at all, and C programs are often both the slimmest _and_ fastest in their class. Reproducing the monomorphization strategy in C requires using the ungainly C macro preprocessor, and modern object-orientation patterns in C are often vtable-based.
 
-_The takeaway here is that it is a broadly thought by compiler engineers that monomorphiation results in somewhat faster generic code while taking considerably longer to compile._
+_Takeaway: it is a broadly thought by compiler engineers that monomorphiation results in somewhat faster generic code while taking somewhat longer to compile._
 
-Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times by around TODO%. [See issue #TODO][mono-issue] for the current status.
+Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times somewhat (I can't find a citation for the exact number right now).
 
-[mono-issue]: todo
-
-All that is only touching on the surface of the compile-time complexity introduced by monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
+All that is only touching on the surface of the tradeoffs between static and dynamic dispatch. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
 
 > so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
 >
-> it's also things like foo.bar where the offset of bar depends on the type of foo
+> it's also things like `foo.bar` where the offset of bar depends on the type of foo
 >
 > many languages sidestep this problem by using pointers everywhere (including generic C, if you don't use macros)
 >
 > not to mention the construction of complex types like iterators, that are basically mini-programs fully instantiated and then customizable -- though this *can* be reproduced by a sufficiently smart compiler
 >
-> (in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time, I think strcat was pointing out how virtual call inlining happens relatively late in the pipeline)
+> (in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time ... how virtual call inlining happens relatively late in the pipeline)
 
-TODO: explain the `foo.bar` comment.
+To which I said "does the field offset issue only come in to play with associated types?"
 
-[Niko]: todo
+And Niko again,
 
+> no
+>
+> `struct Foo<T> { x: u32, y: T, z: f64 }`
+>
+> `fn bar<T>(f: Foo<T>) -> f64 { f.z }`
+>
+> as I recall, before we moved to monomorphization, we had to have two paths for everything: the easy, static path, where all types were known to LLVM, and the horrible, dynamic path, where we had to generate the code to dynamically compute the offsets of fields and things
+>
+> unsurprisingly, the two were only rarely in sync
+>
+> which was a common source of bugs
+>
+>I think a lot of this could be better handled today -- we have e.g. a reasonably reliable bit of code that computes Layout, we have MIR which is a much simpler target -- so I am not as terrified of having to have those two paths
+>
+> but it'd still be a lot of work to make it all work
+>
+> there was also stuff like the need to synthesize type descriptors on the fly (though maybe we could always get by with stack allocation for that)
+>
+> e.g., `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U>() { .. }`
+>
+> here, you have a type descriptor for T that was given to you dynamically, but you have to build the type descriptor for Vec<T>
+>
+> and then we can make it even worse
+>
+> `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U: Debug>() { .. }`
+>
+> now we have to reify all the IMPLS of Debug
+>
+> so that we can do trait matching at runtime
+>
+> because we have to be able to figure out `Vec<T>: Debug`, and all we know is `T: Debug`
+>
+> we might be able to handle that by bubbling up the Vec<T> to our callers...
 
-## Aside: Generic forms in Rust
+[Niko]: https://github.com/nikomatsakis
 
-<!--
-TODO worth doing this?
--->
+_Takeaway: monomorphized are easier to implement and faster, but have greater compile-time cost._
 
 
 ## Testing the impact of monomorphization on Rust compile times
