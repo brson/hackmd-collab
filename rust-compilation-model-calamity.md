@@ -42,14 +42,13 @@ In this episode:
 - [A brief aside about compile-time scenarios](#user-content-a-brief-aside-about-compile-time-scenarios)
 - [Rust's designs for poor compile time](#user-content-rusts-designs-for-poor-compile-time)
 - [Tradeoff #1: Monomorphized generics](#user-content-tradeoff-1-monomorphized-generics)
-- [Aside: Generic forms in Rust](#user-content-generic-forms-in-rust)
 - [Testing the impact of monomorphization on Rust compile times](#user-content-testing-the-impact-of-monomorphization-on-rust-compile-times)
-- [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
+- [Tradeoff #2: Compilation unit size](#user-content-tradeoff-2-huge-compilation-units)
 - [Tradeoff #3: Trait coherence and the orphan rule](#user-content-tradeoff-3-trait-coherence-and-the-orphan-rule)
 - [Tradeoff #4: LLVM](#user-content-tradeoff-4-llvm)
 - [Tradeoff #5: Poor LLVM IR generation](#user-content-tradeoff-5-poor-llvm-ir-generation)
 - [Tradeoff #6: Batch compilation](#user-content-tradeoff-6-batch-compilation)
-- [Tradeoff #7: Build scripts](#user-content-tradeoff-7-build-scripts)
+- [Tradeoff #7: Build scripts and procedural macros](#user-content-tradeoff-7-build-scripts-and-procedural-macros)
 - [Tradeoff #8: Procedural macros](#user-content-tradeoff-8-procedural-macros)
 - [Tradeoff #9: Fixed compilation profiles](#user-content-tradeoff-9-fixed-compilation-profiles)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
@@ -530,53 +529,51 @@ Note that the monomorphization-compile-time problem is compounded in Rust becaus
 
 All that is only touching on the surface of the tradeoffs between static and dynamic dispatch. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
 
-> so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
->
-> it's also things like `foo.bar` where the offset of bar depends on the type of foo
->
-> many languages sidestep this problem by using pointers everywhere (including generic C, if you don't use macros)
->
-> not to mention the construction of complex types like iterators, that are basically mini-programs fully instantiated and then customizable -- though this *can* be reproduced by a sufficiently smart compiler
->
-> (in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time ... how virtual call inlining happens relatively late in the pipeline)
+> niko: so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
 
-To which I said "does the field offset issue only come in to play with associated types?"
+> niko: it's also things like `foo.bar` where the offset of bar depends on the type of foo
 
-And Niko again,
+> niko: many languages sidestep this problem by using pointers everywhere (including generic C, if you don't use macros)
 
-> no
+> niko: not to mention the construction of complex types like iterators, that are basically mini-programs fully instantiated and then customizable -- though this *can* be reproduced by a sufficiently smart compiler
+
+> niko: (in particular, virtual calls can be inlined too, though you get less optimization; I remember some discussion about this at the time ... how virtual call inlining happens relatively late in the pipeline)
+
+> brson: does the field offset issue only come in to play with associated types?
+
+> niko: no
+
+> niko: `struct Foo<T> { x: u32, y: T, z: f64 }`
+
+> niko: `fn bar<T>(f: Foo<T>) -> f64 { f.z }`
+
+> niko: as I recall, before we moved to monomorphization, we had to have two paths for everything: the easy, static path, where all types were known to LLVM, and the horrible, dynamic path, where we had to generate the code to dynamically compute the offsets of fields and things
+
+> niko: unsurprisingly, the two were only rarely in sync
+
+> niko: which was a common source of bugs
+
+> niko: I think a lot of this could be better handled today -- we have e.g. a reasonably reliable bit of code that computes Layout, we have MIR which is a much simpler target -- so I am not as terrified of having to have those two paths
+
+> niko: but it'd still be a lot of work to make it all work
 >
-> `struct Foo<T> { x: u32, y: T, z: f64 }`
->
-> `fn bar<T>(f: Foo<T>) -> f64 { f.z }`
->
-> as I recall, before we moved to monomorphization, we had to have two paths for everything: the easy, static path, where all types were known to LLVM, and the horrible, dynamic path, where we had to generate the code to dynamically compute the offsets of fields and things
->
-> unsurprisingly, the two were only rarely in sync
->
-> which was a common source of bugs
->
->I think a lot of this could be better handled today -- we have e.g. a reasonably reliable bit of code that computes Layout, we have MIR which is a much simpler target -- so I am not as terrified of having to have those two paths
->
-> but it'd still be a lot of work to make it all work
->
-> there was also stuff like the need to synthesize type descriptors on the fly (though maybe we could always get by with stack allocation for that)
->
-> e.g., `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U>() { .. }`
->
-> here, you have a type descriptor for T that was given to you dynamically, but you have to build the type descriptor for Vec<T>
->
-> and then we can make it even worse
->
-> `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U: Debug>() { .. }`
->
-> now we have to reify all the IMPLS of Debug
->
-> so that we can do trait matching at runtime
->
-> because we have to be able to figure out `Vec<T>: Debug`, and all we know is `T: Debug`
->
-> we might be able to handle that by bubbling up the Vec<T> to our callers...
+> niko: there was also stuff like the need to synthesize type descriptors on the fly (though maybe we could always get by with stack allocation for that)
+
+> niko: e.g., `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U>() { .. }`
+
+> niko: here, you have a type descriptor for T that was given to you dynamically, but you have to build the type descriptor for Vec<T>
+
+> niko: and then we can make it even worse
+
+> niko: `fn foo<T>() { bar::<Vec<T>>(); } fn bar<U: Debug>() { .. }`
+
+> niko: now we have to reify all the IMPLS of Debug
+
+> niko: so that we can do trait matching at runtime
+
+> niko: because we have to be able to figure out `Vec<T>: Debug`, and all we know is `T: Debug`
+
+> niko: we might be able to handle that by bubbling up the Vec<T> to our callers...
 
 [Niko]: https://github.com/nikomatsakis
 
@@ -595,7 +592,7 @@ I want to measure the effect of increasing numbers of generic function instantia
 
 So my experiment is going to be built around a code generator with two inputs: call-graph depth, generic type width. It will generate code like the following.
 
-For static dispatch ("monomorphization"):
+For static dispatch:
 
 ```rust
 // depth = 2, width = 2
@@ -611,7 +608,7 @@ impl Io for T0 { fn do_io(&self) { black_box(self) } }
 
 #[derive(Debug)]
 struct T1(u8, u8);
-impl Io for T0 { fn do_io(&self) { black_box(self) } }
+impl Io for T1 { fn do_io(&self) { black_box(self) } }
 
 fn lvl_0<T: Io>(v: T) { lvl_1(v) }
 fn lvl_1<T: Io>(v: T) { v.do_io() }
@@ -656,79 +653,133 @@ The reason for "bottomming out" in an I/O function is to prevent the compiler fr
 TODO
 
 
-## Tradeoff #2: Huge compilation units
+## Tradeoff #2: Compilation unit size
 
 A _compilation unit_ is the basic unit of work that a language's compiler operates on. In C and C++ the compilation unit is a source file. In Java it is a source file. In Rust the compilation unit is a _crate_, which is composed of many files.
 
-- TODO impact of compilation unit on compile time
-- TODO relation between compilation unit and backend codegen units
-- TODO inlining tradeoffs
-- TODO parallelism, incrementalism, codegen units
+The size of compilation units incur a number of tradeoffs. Larger compilation units take longer to analyze, translate, and optimize than smaller crates. And in general, when a change is made to a single compilation unit, the whole compilation unit must be recompiled.
+
+More, smaller crates improve the _perception_ of compile time, if not the total compile time, because a single change may force less of the project to be recompiled. This is a benefit to the "partial recompilation" use cases. A project with more crates though may do more work on a full recompile due to a variety of factors, which I will summarize at the end of this section.
 
 Rust crates don't have to be large, but there are a variety of factors that encourage them to be. The first is simply the relative complexity of adding new crates to a Rust project vs. adding a new module to a crate. New Rust projects tend to turn into monoliths unless given special attention to abstraction boundaries.
 
-Within a crate, there are no fundamental restrictions on module interdependencies, though there are language features that allow some amount of information-hiding within a crate. The big advantage and risk of having modules in the same crate is that they can have _mutual dependencies_, two modules both depending on names exported from the other. Here's an example similar to many encountered in TiKV:
+### Dependency graphs and unstirring spaghetti
+
+Within a crate, there are no fundamental restrictions on module interdependencies, though there are language features that allow some amount of information-hiding within a crate. The big advantage and risk of having modules coexist in the same crate is that they can be _mutual dependent_, two modules both depending on names exported from the other. Here's an example similar to many encountered in TiKV:
 
 ```rust
 mod storage {
-	use network::Message;
+  use network::Message;
 
-	pub struct Engine;
+  pub struct Engine;
 
-    impl Engine {
-	    pub fn handle_message(&self, msg: Message) -> Result<()> { ... }
-	}
+  impl Engine {
+    pub fn handle_message(&self, msg: Message) -> Result<()> { ... }
+  }
 }
 
 mod network {
-	use storage::Engine as StorageEngine;
+  use storage::Engine as StorageEngine;
 
-	pub enum Message { ... }
+  pub enum Message { ... }
 
-	struct Server;
+  struct Server;
 
-	impl Server {
-		 fn handle_message(&self, msg: Message) -> Result<()> {
-		 	 ...
+  impl Server {
+    fn handle_message(&self, msg: Message) -> Result<()> {
+      ...
 
-			 self.engine.handle_message(msg)?;
+      self.engine.handle_message(msg)?;
 
-			 ...
-		 }
-	}
+      ...
+    }
+  }
 }
 ```
 
 Mutual dependencies are useful for reducing cognitive compleity by breaking up code, but as an abstraction boundary they are deceptive: they cannot be trivially reduced further into separate crates.
 
-And that is because _dependencies between crates must form a [DAG]_ (a directed acyclic graph); they do not support mutual dependencies.
-
-[DAG]: todo
+And that is because _dependencies between crates must form a directed acyclic graph (a DAG)_; they do not support mutual dependencies.
 
 Rust crates being daggish is mostly due to fundamental reasons of type checking and architectural complexity. If crates allowed for mutual dependencies then they would no longer be self-contained compilation units.
 
-In preparation for this blog I asked a few people if they could recall the reasons why Rust crates must form a DAG, and Graydon gave a typically thorough and authoritative answer:
+In preparation for this blog I asked a few people if they could recall the reasons why Rust crates must form a DAG, and [Graydon] gave a typically thorough and authoritative answer:
 
-> TODO
+[Graydon]: github.com/graydon/
 
-Although driven by fundamental design constraints, the hard daggishness of crates should be consider a feature: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
+> graydon: Prohibits mutual recursion between definitions across crates, allowing both an obvious deterministic bottom-up build schedule without needing to do some fixpoint iteration or separate declarations from definitions
+and enables phases that need to traverse a complete definition, like typechecking, to happen crate-at-a-time (enabling _some_ degree of incrementality / parallelism).
 
-Note the emphasis on _parallelism_ above. The crate DAG is the best source of compile-time parallelism we have access to. Cargo today will use the DAG to automatically divide work into parallel jobs TODO.
+> graydon: (once you know you've seen all the cycles in a recursive type you can check it for finiteness and then stop expanding it at any boxed variants -- even if they cross crates -- and put a lazy / placeholder definition in those boxed edges; but you need to know those variants don't cycle back!)
 
-TODO mention 
+> graydon: (I do not know if rustc does anything like this anymore)
+
+> graydon: cyclicality concerns are even worse with higher order modules, which I was spending quite a lot of time studying when working on the early design. most systems I've seen require you to paint some kind of a boundary around a group of mutually-recursive definitions to be able to resolve them, so the crate seemed like a natural unit for that.
+
+> graydon: then there is also the issue of versioning, which I think was pretty heavy in my mind (especially after the experience with monotone and git): a lot of versioning questions don't really make sense without acyclic-by-construction references. Like if A 1.0 depends on B 1.0 which depends on A 2.0 you, again, need to do something weird and fixpointy and potentially quite arbitrary and hard to explain to anyone in order to resolve those dependencies.
+
+> graydon: also recall we wanted to be able to do hot code loading early on, which means that much like version-resolving, compiling or linking, your really in a much simpler place if there's a natural topological order to which things you have to load or unload. you can decide whether a crate is still live just by reference-counting, no need to go figure out cyclical dependencies and break them in some random order, etc.
+
+> graydon: I'm not sure which if any of these was the dominant concern. If I had to guess I'd say avoiding problems with separate compilation of recursive definitions and managing code versioning. recall the language in the manual / the rationale for crates: "units of compilation and versioning". Those were the consideration for their existence as separate from modules. Modules get to be recursive. Crates, no. Because of things to do with "compilation and versioning".
+
+Although driven by fundamental design constraints, the hard daggishness of crates should be considered a feature: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
+
+Note the emphasis on _parallelism_. The crate DAG is the simplest source of compile-time parallelism we have access to. Cargo today will use the DAG to automatically divide work into parallel compilation jobs.
 
 So it's quite desirable for Rust code to be broken into crates that form a _wide_ DAG.
 
-...
+In my experience though projects tend to start in a single crate, without great attention to their internal dependency graph, and once compilation time becomes an issue, they have already created a dependency spaghetti dependency graph that is difficult to refactor into smaller crates. This has been my experience on TiKV, where I have made multiple aborted attempts to extract various modules from the main program, in long sequences of commits that untangle internal dependencies.
 
-Probably the biggest reason that Rust crates tend to be large though is because of ...
+One the dependency spaghetti is stirred it's hard to unstir.
+
+### Internal parallelism
+
+So Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate. So `rustc` itself is parallel over a single crate.
+
+It wasn't designed to be parallel though, so its parallelism is limited and hard-won.
+
+Today the only real internal parallelism in `rustc` is the use of [_codegen units_], by which `rustc` automatically divides a crate into multiple LLVM modules during translation. By doing this it can perform code generation in parallel.
+
+And combined with [_incremental compilation_], it can avoid re-translating codegen units which have not changed from run to run, decreasing partial rebuild time. Unfortunately, the impact of codegen units and incremental compilation on both compile-time and run-time performance is hard to predict: improving rebuild time depends on `rustc` successfully dividing a crate into independent units that are unlikely to force each other to recompile when changed, and its not obvious how humans should write their code to help `rustc` in this task; and arbitrarily dividing up a crate into codegen units creates arbitrary barriers to inlining, causing unexpected de-optimizations.
+
+[_codegen units_]: https://doc.rust-lang.org/rustc/codegen-options/index.html
+[_incremental compilation_]: https://rust-lang.github.io/rustc-guide/queries/incremental-compilation.html
+
+The rest of the compiler's work is completely serial, though soon it should [perform some analysis in parallel][parc].
+
+[parc]: https://internals.rust-lang.org/t/help-test-parallel-rustc/11503/14
+
+
+### Tradeoffs of large and small crates
+
+The number of factors affected by compilation unit size is large, and I've given up trying to explain them all coherently. Here's a list of some of them.
+
+- Compilation unit parallelism &mdash; as discussed, parallelising compilation units is trivial.
+
+- Inlining and optimization &mdash; inlining happens at the compilation unit level, and inlining is the key to unlocking optimization, so larger compilation units are better optimized. This story is complicated though by link-time-optimization (LTO).
+
+- Optimization complexity &mdash; optimization has superlinear complexity in code size, so biger compilation units increase compilation time non-linearly.
+
+- Downstream monomorphization &mdash; generics are only translated once they are instantiated, so even with smaller crates, their generic types will not be translated until later. This can result in the "final" crate having a disproportionate amount of translation compared to the others.
+
+- Generic duplication &mdash; generics are translated in the crate which instantiates them, so more crates that use the same generics means more translation time.
+
+- Link-time optimization (LTO) &mdash; release builds tend to have a final "link-time optimization" step that 
+
+- Saving and restoring metadata &mdash; Rust needs to save and load metadata about each crate and each dependency, so more crates means more redundant loading.
+
+- Parallel "codegen units" &mdash; `rustc` can automatically split its LLVM IR into multiple compilation units, called "codegen units". The degree to which it is effective at this depends a lot on how a crate's internal dependencies are organized and the compilers ability to understand them. This can result in faster partial recompilation, at the expense of optimization, since inlining opportunities are lost.
+
+- Compiler-internal parallelism &mdash; Parts of `rustc` itself are p
+
+Unfortunately, because of all these variables, it's not at all obvious for any given project what the impact of refactoring into smaller crates is going to be. Anticipated wins due to increased parallelism are often erased by other factors such as downstream monomorphization, generic duplication, and LTO.
 
 
 ## Tradeoff #3: Trait coherence and the orphan rule
 
 Rust's trait system makes it difficult to make crates into abstraction boundaries because of a thing call the _orphan rule_.
 
-Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeof.
+Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
 
 The [orphan rule][or]
 
@@ -807,7 +858,7 @@ In that talk he also provided some examples of how the Rust language was acciden
 TODO
 
 
-## Tradeoff #7: Build scripts
+## Tradeoff #7: Build scripts and procedural macros
 
 Build scripts are a source of non-determinism in the build process. Cargo hands control over to an arbitrary program that can do anything it wants,
 which can have arbitrary effects on downstream compilation steps.
