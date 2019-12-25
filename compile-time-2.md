@@ -11,7 +11,7 @@ The rest of this post details some of the biggest reasons that Rust's intrinsic 
 - [A brief aside about compile-time scenarios](#user-content-a-brief-aside-about-compile-time-scenarios)
 - [Tradeoff #1: Monomorphized generics](#user-content-tradeoff-1-monomorphized-generics)
   - [Testing the impact of monomorphization on Rust compile times](#user-content-testing-the-impact-of-monomorphization-on-rust-compile-times)
-- [Tradeoff #2: Compilation unit size](#user-content-tradeoff-2-huge-compilation-units)
+- [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
   - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
   - [Internal parallelism](#user-content-internal-parallelism)
   - [Large vs. small crates](#user-content-large-vs-small-crates)
@@ -454,7 +454,7 @@ The reason for "bottomming out" in an I/O function is to prevent the compiler fr
 TODO
 
 
-## Tradeoff #2: Compilation unit size
+## Tradeoff #2: Huge compilation units
 
 A _compilation unit_ is the basic unit of work that a language's compiler operates on. In C and C++ the compilation unit is a source file. In Java it is a source file. In Rust the compilation unit is a _crate_, which is composed of many files.
 
@@ -699,6 +699,7 @@ Aside: the dynamism of build scripts is one of the main cargo features that frus
 - https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
 - https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
 - static linking?
+- https://groups.google.com/forum/#!topic/mozilla.dev.platform/-5Ktzq74KTc
 -->
 
 <!--

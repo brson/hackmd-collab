@@ -36,10 +36,10 @@ In this episode:
 
 - [The Spectre of Poor Rust Compile Times at PingCAP](#user-content-the-spectre-of-poor-rust-compile-times-at-pingcap)
 - [Preview: The TiKV Compile-time Saga so far](#user-content-preview-the-tikv-compile-time-saga-so-far)
-- [Part 1: The Rust Compilation Model Calamity](#user-content-part-1-the-rust-compilation-model-calamity)
+- [The Rust Compilation Model Calamity](#the-rust-compilation-model-calamity)
 - [Bootstrapping Rust](#user-content-bootstrapping-rust)
 - [(Un)virtuous cycles](#user-content-unvirtuous-cycles)
-- [Props for recent work on Rust compile times](#user-content-props-for-recent-work-on-Rust-compile-times)
+- [Recent work on Rust compile times](#user-content-recent-work-on-rust-compile-times)
 - [In the next episode of The TiKV Compile-time Saga](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
 - [Thanks](#user-content-thanks)
 
@@ -75,7 +75,7 @@ The first entry in this series is just a story about why Rust compile times suck
 [tikv-compile-timings]: https://brson.github.io/tmp/tikv-timings.svg
 
 
-## Part 1: The Rust Compilation Model Calamity
+## The Rust Compilation Model Calamity
 
 Rust was designed for slow compilation times.
 
@@ -206,7 +206,83 @@ For years Rust [slowly boiled][boil] in its own poor compile times, not realizin
 Too many metaphores in this section. Sorry.
 
 
-## Props for recent work on Rust compile times
+## Recent work on Rust compile times
+
+There is always work going on to improve Rust compile times. Here is a selection of the activity I'm aware of from the last year or two. Thanks to everybody who helps with this problem.
+
+- The Rust issue tracker has a [master issue] for tracking compile-time-related work.
+- Pipelined compilation ([1][pipe1], [2][pipe2], [3][pipe3])
+  - Typechecks downstream crates in parallel with upstream codegen. Now on by default on the stable channel.
+  - Developed by [@alexcrichton] and [@nikomatsakis].
+- Parallel rustc ([1][parc1], [2][parc2], [3][parc3])
+  - Runs analysis phases of the compiler in parallel. Not yet availble on the stable channel.
+  - Developed by [@Zoxc], [@michaelwoerister], [@oli-obk], and others.
+- `cargo build -Ztimings` ([1][cbt1], [2][cbt2])
+  - Collects and graphs information about cargo's parallel build timings.
+  - Developed by [@ehuss] and [@luser].
+- `rustc -Zself-profile` ([1][sp1], [2][sp2], [3][sp3])
+  - Generates detailed information about `rustc`'s internal performance.
+  - Developed by [@wesleywiser] and [@michaelwoerister].
+- [cargo-feature-analyst]
+  - Finds unused features.
+  - Developed by [@psinghal20].
+- [cargo-udeps]
+  - Finds unused crates.
+  - Developed by [@est31].
+- [twiggy]
+  - Profiles code size, which is corellated with compile time.
+  - Developed by [@fitzgen], [@data-pup], and others.
+
+[master issue]: https://github.com/rust-lang/rust/issues/48547
+[twiggy]: https://github.com/rustwasm/twiggy
+[@fitzgen]: https://github.com/fitzgen
+[@data-pup]: https://github.com/data-pup
+[cbt1]: https://internals.rust-lang.org/t/exploring-crate-graph-build-times-with-cargo-build-ztimings/10975
+[cbt2]: https://github.com/rust-lang/cargo/issues/7405
+[@ehuss]: https://github.com/ehuss
+[@luser]: https://github.com/luser
+[pipe1]: https://github.com/rust-lang/rust/issues/60988
+[pipe2]: https://github.com/rust-lang/cargo/issues/6660
+[pipe3]: https://internals.rust-lang.org/t/evaluating-pipelined-rustc-compilation/10199
+[@alexcrichton]: https://github.com/alexcrichton
+[@nikomatsakis]: https://github.com/nikomatsakis
+[parc1]: https://internals.rust-lang.org/t/parallelizing-rustc-using-rayon/6606
+[parc2]: https://github.com/rust-lang/rust/issues/48685
+[parc3]: https://internals.rust-lang.org/t/help-test-parallel-rustc/11503/14
+[@Zoxc]: https://github.com/Zoxc
+[@michaelwoerister]: https://github.com/michaelwoerister
+[@oli-obk]: http://github.com/oli-obk
+[sp1]: https://rust-lang.github.io/rustc-guide/profiling.html
+[sp2]: https://github.com/rust-lang/rust/issues/58967
+[sp3]: https://github.com/rust-lang/rust/pull/51657
+[@wesleywiser]: https://github.com/wesleywiser
+[cargo-feature-analyst]: https://github.com/psinghal20/cargo-feature-analyst
+[@psinghal20]: https://github.com/psinghal20
+[cargo-udeps]: https://github.com/est31/cargo-udeps
+[@est31]: https://github.com/est31
+
+- https://github.com/rust-analyzer
+- https://github.com/RazrFalcon/cargo-bloat
+- https://github.com/rust-lang/rust/issues/58967
+- https://vfoley.xyz/rust-compile-speed-tips/
+- https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-overrides
+- https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
+- https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
+
+I apologize to person or project I didn't credit.
+
+Finally, here are some tools and scripts I wrote in the course of my TiKV compile-time work. These
+are not polished, but may prove useful to others, at least conceptually. Pull requests welcome.
+
+  - https://github.com/brson/bench-cargo-profiles
+  - https://github.com/brson/cargo-bloat/tree/generics-collapse
+  - https://github.com/brson/tikv-bench-scripts
+  - https://github.com/brson/measure-rustc-rss
+  - maptime
+  - time-all-profiles.sh
+    - https://gist.github.com/brson/1547c3315739440c0c3aef1dc44e0ee4
+  - sum-time-passes.py
+    - https://gist.github.com/brson/819c52c6e9f09f5eaa450e623c686e4e
 
 
 ## In the next episode of The TiKV Compile-time Saga
