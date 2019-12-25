@@ -876,3 +876,7 @@ graydon: eh, it's not a game-changing size win anyway
 graydon: idk lately I've got interested in array languages which have such a different code pattern they're almost incomparable. everything is SoA to an extent that you literally precompile the loops into the runtime once for each combination of scalar types, and then they're always 100% reused. super weird world.
 
 -->
+
+TODO:
+- monomorphizations are shared
+  - https://github.com/rust-lang/rust/issues/47317

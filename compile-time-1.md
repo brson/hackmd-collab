@@ -1,6 +1,6 @@
 # The Rust Compilation Model Calamity
 
-## Or, Rust Compile-Time Adventures in TiKV: Part 1
+## Or, Rust Compile-time Adventures in TiKV: Part 1
 
 ---
 
@@ -61,7 +61,7 @@ Rust developers on the other hand are used to taking a lot of coffee breaks. (Or
 
 _Internally at PingCAP, new code that would be appropriate to write in Rust is sometimes written in Go, only because of the spectre of terrible compile times_.
 
-<!-- TODO: can the above be backed up with an example if asked? -->
+<!-- TODO: fix the above -->
 
 This is a company that is one of Rust's greatest advocates in Asia.
 
@@ -210,19 +210,38 @@ Too many metaphores in this section. Sorry.
 
 There is always work going on to improve Rust compile times. Here is a selection of the activity I'm aware of from the last year or two. Thanks to everybody who helps with this problem.
 
-- The Rust issue tracker has a [master issue] for tracking compile-time-related work.
+- The Rust compile-time [master issue]
+  - Tracks various work to improve compile times.
+  - It contains a great overview of factors that affect Rust compilation performance and potential mitigation strategies.
 - Pipelined compilation ([1][pipe1], [2][pipe2], [3][pipe3])
   - Typechecks downstream crates in parallel with upstream codegen. Now on by default on the stable channel.
   - Developed by [@alexcrichton] and [@nikomatsakis].
 - Parallel rustc ([1][parc1], [2][parc2], [3][parc3])
   - Runs analysis phases of the compiler in parallel. Not yet availble on the stable channel.
   - Developed by [@Zoxc], [@michaelwoerister], [@oli-obk], and others.
+- [MIR-level constant propagation][cprop]
+  - Performs constant propagation on MIR, which reduces duplicated LLVM work on monomorphized functions.
+  - Developed by [@wesleywiser].
 - `cargo build -Ztimings` ([1][cbt1], [2][cbt2])
   - Collects and graphs information about cargo's parallel build timings.
   - Developed by [@ehuss] and [@luser].
 - `rustc -Zself-profile` ([1][sp1], [2][sp2], [3][sp3])
   - Generates detailed information about `rustc`'s internal performance.
   - Developed by [@wesleywiser] and [@michaelwoerister].
+- [Shared monomorphizations][sm]
+  - Reduces code bloat by deduplicating monomorphizations that occur in multiple crates.
+  - Enabled by default if the optimization level is less than 3.
+  - Developed by [@michaelwoerister].
+- MIR optimizations ([1][mo1], [2][mo2])
+  - Optimizing MIR should be faster that optimizeng monomorphized LLVM IR.
+  - Not in stable compilers yet.
+  - Developed by [@wesleywiser] and others.
+- [perf.rust-lang.org]
+  - Rust's compile-time performance is tracked in detail. Benchmarks continue to be added.
+  - Developed by [@nrc], [@Mark-Simulacrum], [@nnethercote] and many more.
+- [cargo-bloat]
+  - Finds what occupies the most space in binaries. Bloat is correlated with compile time.
+  - Developed by [@RazrFalcon] and others.
 - [cargo-feature-analyst]
   - Finds unused features.
   - Developed by [@psinghal20].
@@ -232,7 +251,41 @@ There is always work going on to improve Rust compile times. Here is a selection
 - [twiggy]
   - Profiles code size, which is corellated with compile time.
   - Developed by [@fitzgen], [@data-pup], and others.
+- [rust-analyzer]
+  - A new language server for Rust with faster response time than the original [RLS].
+  - Developed by [@matklad], [@flodiebold], [@kjeremy], and many others.
+- ["How to alleviate the pain of Rust compile times"][ctpain]
+  - Blog post by vfoley.
+- ["Thoughts on Rust bloat"][trb]
+  - Blog post by [@raphlinus]
+- Nicholas Nethercote's work on `rustc` optimization
+  - ["How to speed up the Rust compiler in 2019"][nn1]
+  - ["The Rust compiler is still getting faster"][nn2]
+  - ["Visualizing Rust compilation"][nn3]
+  - ["How to speed up the Rust compiler some more in 2019"][nn4]
+  - ["How to speed up the Rust compiler one last time in 2019"][nn5]
 
+[nn5]: https://blog.mozilla.org/nnethercote/2019/12/11/how-to-speed-up-the-rust-compiler-one-last-time-in-2019/
+[nn4]: https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
+[nn3]: https://blog.mozilla.org/nnethercote/2019/10/10/visualizing-rust-compilation/
+[nn2]: https://blog.mozilla.org/nnethercote/2019/07/25/the-rust-compiler-is-still-getting-faster/
+[nn1]: https://blog.mozilla.org/nnethercote/2019/07/17/how-to-speed-up-the-rust-compiler-in-2019/
+[trb]: https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
+[@raphlinus]: https://github.com/raphlinus
+[ctpain]: https://vfoley.xyz/rust-compile-speed-tips/
+[cargo-bloat]: https://github.com/RazrFalcon/cargo-bloat
+[@RazrFalcon]: https://github.com/RazrFalcon
+[perf.rust-lang.org]: https://perf.rust-lang.org/
+[@Mark-Simulacrum]: https://github.com/Mark-Simulacrum
+[@nrc]: https://github.com/nrc
+[@nnethercote]: https://github.com/nnethercote
+[cprop]: https://blog.rust-lang.org/inside-rust/2019/12/02/const-prop-on-by-default.html
+[sm]: https://github.com/rust-lang/rust/issues/47317
+[rust-analyzer]: https://github.com/rust-analyzer/rust-analyzer
+[@matklad]: https://github.com/matklad
+[@flodiebold]: https://github.com/flodiebold
+[@kjeremy]: https://github.com/kjeremy
+[RLS]: https://github.com/rust-lang/rls
 [master issue]: https://github.com/rust-lang/rust/issues/48547
 [twiggy]: https://github.com/rustwasm/twiggy
 [@fitzgen]: https://github.com/fitzgen
@@ -261,31 +314,9 @@ There is always work going on to improve Rust compile times. Here is a selection
 [cargo-udeps]: https://github.com/est31/cargo-udeps
 [@est31]: https://github.com/est31
 
-- https://github.com/rust-analyzer
-- https://github.com/RazrFalcon/cargo-bloat
-- https://github.com/rust-lang/rust/issues/58967
-- https://vfoley.xyz/rust-compile-speed-tips/
-- https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-overrides
-- https://raphlinus.github.io/rust/2019/08/21/rust-bloat.html
-- https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
+I apologize to any person or project I didn't credit.
 
-I apologize to person or project I didn't credit.
-
-Finally, here are some tools and scripts I wrote in the course of my TiKV compile-time work. These
-are not polished, but may prove useful to others, at least conceptually. Pull requests welcome.
-
-  - https://github.com/brson/bench-cargo-profiles
-  - https://github.com/brson/cargo-bloat/tree/generics-collapse
-  - https://github.com/brson/tikv-bench-scripts
-  - https://github.com/brson/measure-rustc-rss
-  - maptime
-  - time-all-profiles.sh
-    - https://gist.github.com/brson/1547c3315739440c0c3aef1dc44e0ee4
-  - sum-time-passes.py
-    - https://gist.github.com/brson/819c52c6e9f09f5eaa450e623c686e4e
-
-
-## In the next episode of The TiKV Compile-time Saga
+## In the next episode of Rust Compile-time Adventures in TiKV
 
 Things are looking dire for Rust developers' productivity, and TiKV hackers are grumbling during their frequent coffee breaks! Can Rust succeed? Can Rust compile TiKV fast enough to prevent PingCAP's product managers from &nbsp; (╯°□°）╯︵&nbsp;┻━┻ &nbsp; and rewriting the entire thing in C++ or Go or Pony?
 
