@@ -212,7 +212,7 @@ There is always work going on to improve Rust compile times. Here is a selection
 
 - The Rust compile-time [master issue]
   - Tracks various work to improve compile times.
-  - It contains a great overview of factors that affect Rust compilation performance and potential mitigation strategies.
+  - Contains a great overview of factors that affect Rust compilation performance and potential mitigation strategies.
 - Pipelined compilation ([1][pipe1], [2][pipe2], [3][pipe3])
   - Typechecks downstream crates in parallel with upstream codegen. Now on by default on the stable channel.
   - Developed by [@alexcrichton] and [@nikomatsakis].
@@ -222,6 +222,10 @@ There is always work going on to improve Rust compile times. Here is a selection
 - [MIR-level constant propagation][cprop]
   - Performs constant propagation on MIR, which reduces duplicated LLVM work on monomorphized functions.
   - Developed by [@wesleywiser].
+- [MIR optimizations][mo1]
+  - Optimizing MIR should be faster that optimizeng monomorphized LLVM IR.
+  - Not in stable compilers yet.
+  - Developed by [@wesleywiser] and others.
 - `cargo build -Ztimings` ([1][cbt1], [2][cbt2])
   - Collects and graphs information about cargo's parallel build timings.
   - Developed by [@ehuss] and [@luser].
@@ -232,10 +236,6 @@ There is always work going on to improve Rust compile times. Here is a selection
   - Reduces code bloat by deduplicating monomorphizations that occur in multiple crates.
   - Enabled by default if the optimization level is less than 3.
   - Developed by [@michaelwoerister].
-- MIR optimizations ([1][mo1], [2][mo2])
-  - Optimizing MIR should be faster that optimizeng monomorphized LLVM IR.
-  - Not in stable compilers yet.
-  - Developed by [@wesleywiser] and others.
 - [perf.rust-lang.org]
   - Rust's compile-time performance is tracked in detail. Benchmarks continue to be added.
   - Developed by [@nrc], [@Mark-Simulacrum], [@nnethercote] and many more.
@@ -265,6 +265,7 @@ There is always work going on to improve Rust compile times. Here is a selection
   - ["How to speed up the Rust compiler some more in 2019"][nn4]
   - ["How to speed up the Rust compiler one last time in 2019"][nn5]
 
+[mo1]: https://github.com/rust-lang/rust/pulls?q=mir-opt
 [nn5]: https://blog.mozilla.org/nnethercote/2019/12/11/how-to-speed-up-the-rust-compiler-one-last-time-in-2019/
 [nn4]: https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
 [nn3]: https://blog.mozilla.org/nnethercote/2019/10/10/visualizing-rust-compilation/
