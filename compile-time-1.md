@@ -50,7 +50,7 @@ At [PingCAP], my colleagues write [TiKV], the storage node of our distributed da
 
 It was mostly a great decision, and most people internally are mostly happy about it.
 
-But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming languages. TiKV is not even a particularly large system, with TODO total lines of Rust code. Building [Servo] or [Rust itself][r] is much, much more unpleasant.
+But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming languages. TiKV is not even a particularly large system, with 2 million total lines of Rust code. Building [Servo] or [Rust itself][r] is much, much more unpleasant.
 
 [Servo]: https://github.com/servo/servo
 [r]: github.com/rust-lang/rust/
