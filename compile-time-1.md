@@ -216,17 +216,29 @@ Too many tired metaphores in this section. Sorry, no time to edit them into some
 
 ## Early design decisions that favored run-time over compile-time
 
-- Monomorphization
+What follows is a brief description of some of Rust's key early design decisions that contribute to slow compile times. I only describe them briefly here. The next episode in this series will go into further depth.
+
 - Borrowing
+
+- Monomorphization
+
 - Stack unwinding
+
 - Macros
+
 - LLVM backend
+
 - Relying too much on the LLVM optimizer
+
 - Split compiler / package manager
+
 - Per-compilation-unit code-generation
+
 - Single-threaded compiler
+
 - Traits and trait coherence
-- Tests next to code
+
+- Tests in same compilation unit as code
 
 
 ## Recent work on Rust compile times
