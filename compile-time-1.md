@@ -367,7 +367,7 @@ Stay Rusty, friends.
 This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
 
 
-# Addendum: Bad metaphore body-count
+## Addendum: Bad metaphore body-count
 
 Let's see how many cliché's I managed to bake into this one:
 
