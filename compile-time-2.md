@@ -688,6 +688,13 @@ Aside: the dynamism of build scripts is one of the main cargo features that frus
 
 ## All that stuff summarized
 
+## In the next episode of Rust Compile-time Adventures in TiKV
+
+Things are looking dire for Rust developers' productivity, and TiKV hackers are grumbling during their frequent coffee breaks! Can Rust succeed? Can Rust compile TiKV fast enough to prevent PingCAP's product managers from &nbsp; (╯°□°）╯︵&nbsp;┻━┻ &nbsp; and rewriting the entire thing in C++ or Go or Pony?
+
+In the next entry of this series we'll talk about the nuances of the many Rust compile time use cases, which aspects of Rust affect which use cases, how users percieve and are affected by Rust compile time, and all the ideas the TiKV team came up with to free ourselves from this Rusting, suffering life.
+
+Stay Rusty, friends.
 
 
 

@@ -4,7 +4,7 @@
 
 ---
 
-_The Rust programming language was designed for slow compilation times._
+The Rust programming language was designed for slow compilation times.
 
 This whole Rust thing is all a con the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your mission-critical products, and we'll slow your developers' productivity to a crawl.
 
@@ -15,7 +15,7 @@ I do know one thing though…
 
 ## Rust compile times suck
 
-If you are reading this you probably know it too. We all know it. We mostly hate it.
+If you are reading this you probably know it too.
 
 I know it because I encounter it every day. I know it because my coworkers complain about it. I know it because the Rust production users I talk to consistently mention it. I know it because so many of us indicated so [in the last Rust survey][sur].
 
@@ -30,17 +30,18 @@ At [PingCAP], we develop our distributed storage system, [TiKV], in Rust, and it
 [PingCAP]: https://pingcap.com/en/
 [TiKV]: github.com/tikv/tikv/
 
-Over a series of posts I'll discuss what we have learned (maybe &mdash; maybe I'll just leave you wondering forever): why compiling Rust is slow, and/or feels slow; compile-time use cases; things we measured; things we want to measure but haven't or don't know how; ideas that improved compile times; ideas that did not improve compile times; how TiKV compile times have changed over time; suggestions for how to organize Rust projects that compile fast; and recent and future upstream improvements to compile times.
+Over a series of posts I'll discuss what we have learned: why compiling Rust is slow, and/or feels slow; how Rust's development lead to slow compile-times; compile-time use cases; things we measured; things we want to measure but haven't or don't know how; ideas that improved compile times; ideas that did not improve compile times; how TiKV compile times have changed over time; suggestions for how to organize Rust projects that compile fast; and recent and future upstream improvements to compile times.
 
 In this episode:
 
-- [The Spectre of Poor Rust Compile Times at PingCAP](#user-content-the-spectre-of-poor-rust-compile-times-at-pingcap)
-- [Preview: The TiKV Compile-time Saga so far](#user-content-preview-the-tikv-compile-time-saga-so-far)
-- [The Rust Compilation Model Calamity](#the-rust-compilation-model-calamity)
+- [The spectre of poor Rust compile times at PingCAP](#user-content-the-spectre-of-poor-rust-compile-times-at-pingcap)
+- [Preview: the TiKV compile-time adventure so far](#user-content-preview-the-tikv-compile-time-saga-so-far)
+- [The Rust compilation model calamity](#the-rust-compilation-model-calamity)
 - [Bootstrapping Rust](#user-content-bootstrapping-rust)
 - [(Un)virtuous cycles](#user-content-unvirtuous-cycles)
+- [Early design decisions that favored run-time over compile-time](#user-content-early-decisions-that-favored-run-time-over-compile-time)
 - [Recent work on Rust compile times](#user-content-recent-work-on-rust-compile-times)
-- [In the next episode of The TiKV Compile-time Saga](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
+- [In the next episode](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
 - [Thanks](#user-content-thanks)
 
 
@@ -206,6 +207,10 @@ For years Rust [slowly boiled][boil] in its own poor compile times, not realizin
 Too many metaphores in this section. Sorry.
 
 
+## Early design decisions that favored run-time over compile-time
+
+
+
 ## Recent work on Rust compile times
 
 There is always work going on to improve Rust compile times. Here is a selection of the activity I'm aware of from the last year or two. Thanks to everybody who helps with this problem.
@@ -317,16 +322,17 @@ There is always work going on to improve Rust compile times. Here is a selection
 
 I apologize to any person or project I didn't credit.
 
+
 ## In the next episode of Rust Compile-time Adventures in TiKV
 
-Things are looking dire for Rust developers' productivity, and TiKV hackers are grumbling during their frequent coffee breaks! Can Rust succeed? Can Rust compile TiKV fast enough to prevent PingCAP's product managers from &nbsp; (╯°□°）╯︵&nbsp;┻━┻ &nbsp; and rewriting the entire thing in C++ or Go or Pony?
+So Rust dug itself deep into a corner over the years and will probably be digging itself back out until the end of time (or the end of Rust &mdash; same thing, really). Can Rust compile-time be saved from its own run-time success? Will TiKV ever build fast enough to satisfy my managers?
 
-In the next entry of this series we'll talk about the nuances of the many Rust compile time use cases, which aspects of Rust affect which use cases, how users percieve and are affected by Rust compile time, and all the ideas the TiKV team came up with to free ourselves from this Rusting, suffering life.
+In the next episode, we'll deep-dive into the specifics of Rust's language design that cause it to compile so slow.
 
 Stay Rusty, friends.
 
 
 ## Thanks
 
-This post has been in draft for a long time, and has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience about my extreme procrastination.
+This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
 
