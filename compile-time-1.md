@@ -6,9 +6,17 @@
 
 The Rust programming language was designed for slow compilation times.
 
-This whole Rust thing is all a con the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your mission-critical products, and we'll slow your developers' productivity to a crawl.
+I was there. I witnessed it for myself, and I'm finally ready to break the silence: Rust is a con. It's a prank the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your products, and we'll reduce your developers' productivity to a crawl.
 
-Am I joking? I don't know. What even is anything anymore, anyway?
+**WE GOT YOU GOOD!**
+
+![taunting crab](https://brson.github.io/tmp/crab1.jpg)
+<!--![taunting crab](https://brson.github.io/tmp/crab2.jpg)-->
+<!--![taunting crab](https://brson.github.io/tmp/crab3.jpg)-->
+<!--![taunting crab](https://brson.github.io/tmp/crab4.jpg)-->
+<!--![taunting crab](https://brson.github.io/tmp/crab5.jpg)-->
+
+Am I joking? I don't know. What is reality anyway?
 
 I do know one thing though…
 
@@ -51,25 +59,21 @@ At [PingCAP], my colleagues write [TiKV], the storage node of our distributed da
 
 It was mostly a great decision, and most people internally are mostly happy about it.
 
-But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming languages. TiKV is not even a particularly large system, with 2 million total lines of Rust code. Building [Servo] or [Rust itself][r] is much, much more unpleasant.
+But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming environments. TiKV is not even a particularly large system, with 2 million total lines of Rust code (TODO and other code? TODO not large?). Building [Servo] or [Rust itself][r] is much, much more unpleasant.
 
 [Servo]: https://github.com/servo/servo
 [r]: github.com/rust-lang/rust/
 
-Other nodes in the system are written in Go, which of course comes with a different set of advantages and disadvantages from Rust. Some of the Go developers at PingCAP kinda hate and resent having to wait for the Rust components to build. They are used to a rapid build-test cycle.
+Other nodes in the system are written in Go, which of course comes with a different set of advantages and disadvantages from Rust. Some of the Go developers at PingCAP resent having to wait for the Rust components to build. They are used to a rapid build-test cycle.
 
-Rust developers on the other hand are used to taking a lot of coffee breaks. (Or tea, or cigarettes, or sobbing, or whatever, as the case may be &mdash; Rust developers have plenty of spare time to nurse their personal demons.)
+Rust developers on the other hand are used to taking a lot of coffee breaks (or tea, or cigarettes, or sobbing, or whatever, as the case may be &mdash; Rust developers have the spare time to nurse their demons).
 
-_Internally at PingCAP, new code that would be appropriate to write in Rust is sometimes written in Go, only because of the spectre of terrible compile times_.
-
-<!-- TODO: fix the above -->
-
-This is a company that is one of Rust's greatest advocates in Asia.
+TODO hook
 
 
 ## Preview: The TiKV Compile-time Saga so far
 
-The first entry in this series is just a story about why Rust compile times suck. Since it might take another entry or two to dive into concrete technical details of what we've done with TiKV's compile times, here's a pretty graph to capture your imagination, without comment.
+The first entry in this series is just a story about the history of Rust with respect to compilation time. Since it might take several more entries before we dive into concrete technical details of what we've done with TiKV's compile times, here's a pretty graph to capture your imagination, without comment.
 
 ![tikv-compile-timings]
 
@@ -336,3 +340,14 @@ Stay Rusty, friends.
 
 This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
 
+<!--
+
+images:
+
+- https://www.pixel4k.com/crab-4k-69365.html
+- http://yesofcorsa.com/blue-crab/
+- https://commons.wikimedia.org/wiki/File:K%C4%B1z%C4%B1l%C4%B1rmak_near_the_crab.jpg
+- https://cdn4.gamepur.com/images/god-of-war/Mr_Krabs_And_Money.jpg
+- http://nick.mtvnimages.com/nick/video/images/spongebob-squarepants/spongebob-squarepants-mr-krabs-formula-clip-16x9.jpg?quality=0.75&maxdimension=600&height=225&width=400
+
+-->
