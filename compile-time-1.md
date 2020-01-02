@@ -6,7 +6,7 @@
 
 The Rust programming language was designed for slow compilation times.
 
-I was there. I witnessed it for myself, and I'm finally ready to break the silence: Rust is a con. It's a prank the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your products, and we'll reduce your developers' productivity to a crawl.
+I was there. I witnessed it for myself, and I am finally ready to break the silence: Rust is a con. It's a prank the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your products, and we'll reduce your developers' productivity to a crawl.
 
 **WE GOT YOU GOOD!**
 
@@ -43,14 +43,15 @@ Over a series of posts I'll discuss what we have learned: why compiling Rust is 
 In this episode:
 
 - [The spectre of poor Rust compile times at PingCAP](#user-content-the-spectre-of-poor-rust-compile-times-at-pingcap)
-- [Preview: the TiKV compile-time adventure so far](#user-content-preview-the-tikv-compile-time-saga-so-far)
+- [Preview: The TiKV compile-time adventure so far](#user-content-preview-the-tikv-compile-time-saga-so-far)
 - [The Rust compilation model calamity](#the-rust-compilation-model-calamity)
 - [Bootstrapping Rust](#user-content-bootstrapping-rust)
 - [(Un)virtuous cycles](#user-content-unvirtuous-cycles)
 - [Early design decisions that favored run-time over compile-time](#user-content-early-decisions-that-favored-run-time-over-compile-time)
 - [Recent work on Rust compile times](#user-content-recent-work-on-rust-compile-times)
 - [In the next episode](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
-- [Thanks](#user-content-thanks)
+- [Addendum: Thanks](#user-content-addendum-thanks)
+- [Addendum: Bad metaphore body-count](#user-content-addendum-bad-metaphore-body-count)
 
 
 ## The Spectre of Poor Rust Compile Times at PingCAP
@@ -71,7 +72,7 @@ Rust developers on the other hand are used to taking a lot of coffee breaks (or 
 TODO hook
 
 
-## Preview: The TiKV Compile-time Saga so far
+## Preview: The TiKV Compile-time adventure so far
 
 The first entry in this series is just a story about the history of Rust with respect to compilation time. Since it might take several more entries before we dive into concrete technical details of what we've done with TiKV's compile times, here's a pretty graph to capture your imagination, without comment.
 
@@ -86,34 +87,34 @@ Rust was designed for slow compilation times.
 
 I mean, that wasn't _the goal_. As is often cautioned in debates among their designers, programming language design is full of tradeoffs. One of those fundamental tradeoffs is **run-time performance** vs. **compile-time performance**, and the Rust team nearly always (if not always) chose run-time over compile-time.
 
-The intentional run-time / compile-time tradeoff isn't the only reason Rust compile times are horrific, but it's a big one. There are also language designs that are not crucial for run-time performance, but accidentally bad for compile time performance. The Rust compiler was also not designed to support fast compilation times.
+The intentional run-time / compile-time tradeoff isn't the only reason Rust compile times are horrific, but it's a big one. There are also language designs that are not crucial for run-time performance, but accidentally bad for compile-time performance. The Rust compiler was also implemented in ways that inhibit compile-time performance.
 
 So there are intrinsic language-design reasons, and accidental language-design reasons for Rust's bad compile times. Those mostly can't be fixed ever (though they may be mitigated by compiler improvements, design patterns, and language evolution). There are also accidental compiler-architecture reasons for Rust's bad compile times, which can generally be fixed through enormous engineering effort and time.
 
-If compilation time was not a core Rust design principle, what were Rust's core design principles? Here are a few:
+If fast compilation time was not a core Rust design principle, what were Rust's core design principles? Here are a few:
 
 - Practicality &mdash; it should be a language that can be and is used in the real world.
-- Pragmatism &mdash; it should admit concessions to human usability and integration into systems as they exist, instead of attempting to maintain any kind of theoretical purity.
+- Pragmatism &mdash; it should admit concessions to human usability and integration into systems as they exist today.
 - Memory-safety &mdash; it must enforce memory safety, and not admit segmentation faults and other such memory-access violations.
-- Performance &mdash; it must be in the same performance class as C and C++.
+- Performance &mdash; it must be in the same performance class as C++.
 - Concurrency &mdash; it must provide modern solutions to writing concurrent code.
 
-But it's not like they didn't put _any_ consideration into fast compile times. For example, for any analysis Rust needs to do, the team tried to ensure it would not suffer from exponential complexity. Rust's design history though one of increasingly being sucked into the swamp of poor compile-time performance.
+But it's not like the designers didn't put _any_ consideration into fast compile times. For example, for any analysis Rust needs to do, the team tried to ensure reasonable bounds on computational complexity. Rust's design history though one of increasingly being sucked into the swamp of poor compile-time performance.
 
 Story time.
 
 
 ## Bootstrapping Rust
 
-I don't remember when I realized that Rust's bad compile times were a strategic problem for the language, potentially a fatal mistake in the face of future Rust-alike competitors. For the first few years I wasn't too concerned, and I don't think most of my peers were either. I mostly remember that Rust compile time was always* bad, and like, whatever, that's just reality.
+I don't remember when I realized that Rust's bad compile times were a strategic problem for the language, potentially a fatal mistake in the face of competition from future low-level programming languages. For the first few years, hacking almost entirely on the Rust compiler itself, I wasn't too concerned, and I don't think most of my peers were either. I mostly remember that Rust compile time was always* bad, and like, whatever, I can deal with that.
 
-<!-- TODO dcalvin doesn't like "and like, whatever" -->
+When I worked daily on the Rust compiler it was common for me to have at least three copies of the repository on the computer, hacking on one while all the others were building and testing. I would start building workspace 1, switch terminals, remember what's going on over here in workspace 2, hack on that for a while, start building in workspace 2, switch terminals, etc. Little flow, constant context switching.
 
-When I worked on Rust heavily it was common for me to have at least three copies of the repository on the computer, hacking on one while all the others were building and testing. I would start building workspace 1, switch terminals, remember what's going on over here in workspace 2, hack on that for a while, start building in workspace 2, switch terminals, etc. Little flow, constant context switching.
+This was (and probably is) typical of other Rust developers too. I still do the same thing hacking on TiKV today.
 
-This was (and probably is) typical of other Rust developers too.
+---
 
-(*) OK, Rust's compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], called `rustboot`, written in OCaml, had extremely simple static analysis, and extremely naive code generation. Here's how long it takes to build:
+\* OK, Rust's (self-)compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], called `rustboot`, written in OCaml, had extremely simple static analysis, and extremely naive code generation. Here's how long it takes to build:
 
 ```
 TODO
@@ -133,9 +134,11 @@ Lol. Just lol. The comparison is completely unfair, for reasons. But lol, right?
 [tc]: https://github.com/rust-lang/rust/commit/3ed3b8bb7b100afecf7d5f52eafbb70fec27f537
 [yonder]: todo
 
+---
+
 One of the immediate tasks upon Rust's initial open-sourcing in 2010 was to make it _self-hosting_ &mdash; that is, to write a Rust compiler in Rust. `rustc`, in addition to being written in Rust, would also use [LLVM] as its backend for generating machine code, instead of `rustboot`s hand-written x86 code-generator.
 
-Rust needed to become self-hosting as a means of "dog-fooding" the language &mdash; writing the Rust compiler in Rust meant that the Rust authors needed to use their own language to write practical software, early in the language design process.
+Rust needed to become self-hosting as a means of "dog-fooding" the language &mdash; writing the Rust compiler in Rust meant that the Rust authors needed to use their own language to write practical software, early in the language design process, which it was hoped would lead to a useful and practical language.
 
 [LLVM]: https://llvm.org/
 
@@ -143,7 +146,7 @@ The first time Rust built itself was on April 20, 2011. [It took one hour][self-
 
 [self-host]: https://mail.mozilla.org/pipermail/rust-dev/2011-April/000330.html
 
-That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the OCaml-`rustc`][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations. To compare with the previously-presented build times, that commit that drops OCaml bootstraps in TODO minutes under the same environment ([logs]).
+That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the old `rustboot` compiler][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations. To compare with the previously-presented build times, that commit that drops OCaml bootstraps in TODO minutes under the same environment ([logs]).
 
 [nocaml]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
 [logs]: todo
@@ -208,11 +211,22 @@ For years Rust [slowly boiled][boil] in its own poor compile times, not realizin
 
 [boil]: https://en.wikipedia.org/wiki/Boiling_frog
 
-Too many metaphores in this section. Sorry.
+Too many tired metaphores in this section. Sorry, no time to edit them into something more creative. Deadlines expiring.
 
 
 ## Early design decisions that favored run-time over compile-time
 
+- Monomorphization
+- Borrowing
+- Stack unwinding
+- Macros
+- LLVM backend
+- Relying too much on the LLVM optimizer
+- Split compiler / package manager
+- Per-compilation-unit code-generation
+- Single-threaded compiler
+- Traits and trait coherence
+- Tests next to code
 
 
 ## Recent work on Rust compile times
@@ -336,9 +350,31 @@ In the next episode, we'll deep-dive into the specifics of Rust's language desig
 Stay Rusty, friends.
 
 
-## Thanks
+## Addendum: Thanks
 
 This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
+
+
+# Addendum: Bad metaphore body-count
+
+Let's see how many cliché's I managed to bake into this one:
+
+- clickbait title
+- pretentious subtitle
+- stupid "meme" imagery
+- "sucked into the swamp of poor compile-time performance"
+- "dog-fooding"
+- "gruelling history of Rust's tragic compile times"
+- The Ship of Theseus
+- virtuous cycles
+- "mission accomplished"
+- "for years Rust slowly boiled"
+- "dug deep into corner" (two in one!)
+- TV-style cliffhanger ending
+- "bake into this one"
+
+I'm sorry. I'm sorry. I don't care. Leave me alone.
+
 
 <!--
 
