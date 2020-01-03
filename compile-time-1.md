@@ -54,7 +54,7 @@ In this episode:
 - [Addendum: Bad metaphore body-count](#user-content-addendum-bad-metaphore-body-count)
 
 
-## The Spectre of Poor Rust Compile Times at PingCAP
+## The spectre of poor Rust compile times at PingCAP
 
 At [PingCAP], my colleagues write [TiKV], the storage node of our distributed database, in Rust. They do this because they want this most important node in the system to be fast and reliable by construction, at least to the greatest extent reasonable.
 
@@ -381,7 +381,7 @@ Let's see how many cliché's I managed to bake into this one:
 - virtuous cycles
 - "mission accomplished"
 - "for years Rust slowly boiled"
-- "dug deep into corner" (two in one!)
+- "dug deep into a corner" (two in one!)
 - TV-style cliffhanger ending
 - "bake into this one"
 
