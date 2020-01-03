@@ -153,6 +153,14 @@ That first super-slow bootstrap was an anomaly of bad code-generation and other 
 
 This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
 
+<!--
+
+- init: https://gist.github.com/a6b599da4e1a7faa177c707baa095caf
+- bootstrap:
+- today:
+
+-->
+
 ---
 
 Note that it is not actually fair to compare Rust's own compile time to the compile time of Rust programs generally, but it is fun because the Rust build takes so hilariously long.
