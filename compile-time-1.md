@@ -50,7 +50,6 @@ In this episode:
 - [Early design decisions that favored run-time over compile-time](#user-content-early-decisions-that-favored-run-time-over-compile-time)
 - [Recent work on Rust compile times](#user-content-recent-work-on-rust-compile-times)
 - [In the next episode](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
-- [Addendum: Thanks](#user-content-addendum-thanks)
 - [Addendum: Bad metaphore body-count](#user-content-addendum-bad-metaphore-body-count)
 
 
@@ -60,16 +59,14 @@ At [PingCAP], my colleagues write [TiKV], the storage node of our distributed da
 
 It was mostly a great decision, and most people internally are mostly happy about it.
 
-But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming environments. TiKV is not even a particularly large system, with 2 million total lines of Rust code (TODO and other code? TODO not large?). Building [Servo] or [Rust itself][r] is much, much more unpleasant.
+But many complain about how long it takes to build. For some a full rebuild might take 15 minutes in development mode, and 30 minutes in release mode. To developers of large systems projects this might not sound horrible, but it's much slower than what many developers expect out of modern programming environments. (I wanted to say here that TiKV is not even that big of a codebase but it does contain 2 million lines of Rust and 2 million lines of C/C++, which is sizable. In comparison, Rust itself contains over 3 million lines of Rust, and [Servo] contains 2.7 million. [Full line counts here]).
 
 [Servo]: https://github.com/servo/servo
-[r]: github.com/rust-lang/rust/
+[Full line counts here]: https://gist.github.com/brson/31b6f8c5467b050779ce9aa05d41aa84/edit
 
 Other nodes in the system are written in Go, which of course comes with a different set of advantages and disadvantages from Rust. Some of the Go developers at PingCAP resent having to wait for the Rust components to build. They are used to a rapid build-test cycle.
 
 Rust developers on the other hand are used to taking a lot of coffee breaks (or tea, or cigarettes, or sobbing, or whatever, as the case may be &mdash; Rust developers have the spare time to nurse their demons).
-
-TODO hook
 
 
 ## Preview: The TiKV Compile-time adventure so far
@@ -368,11 +365,6 @@ So Rust dug itself deep into a corner over the years and will probably be diggin
 In the next episode, we'll deep-dive into the specifics of Rust's language design that cause it to compile so slow.
 
 Stay Rusty, friends.
-
-
-## Addendum: Thanks
-
-This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
 
 
 ## Addendum: Bad metaphore body-count

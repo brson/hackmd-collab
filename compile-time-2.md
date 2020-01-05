@@ -23,6 +23,7 @@ The rest of this post details some of the biggest reasons that Rust's intrinsic 
 - [Tradeoff #8: Procedural macros](#user-content-tradeoff-8-procedural-macros)
 - [Tradeoff #9: Fixed compilation profiles](#user-content-tradeoff-9-fixed-compilation-profiles)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
+- [Addendum: Thanks](#user-content-addendum-thanks)
 
 
 ## A brief aside about compile-time scenarios
@@ -698,6 +699,9 @@ Stay Rusty, friends.
 
 
 
+## Addendum: Thanks
+
+This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
 
 
 <!--
