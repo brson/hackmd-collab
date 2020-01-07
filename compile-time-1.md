@@ -6,9 +6,13 @@
 
 The Rust programming language was designed for slow compilation times.
 
-I was there. I witnessed it for myself, and I am finally ready to break the silence: Rust is a con. It's a prank the language designers played on you, the Rust user &mdash; adopt this crazy-fast, super-reliable language for your products, and we'll reduce your developers' productivity to a crawl.
+I was there. I witnessed it for myself, and I am finally ready to break the silence: Rust is a hoax. It's a prank the language designers played on you, the Rust user &mdash; adopt this high-performance, high-reliability language for your products, and we'll reduce your productivity to a crawl.
 
-**WE GOT YOU GOOD!**
+It's brilliantly insidious.
+
+&nbsp;
+
+&#x1f942; **WE GOT YOU GOOD!** &#x1f942;
 
 ![taunting crab](https://brson.github.io/tmp/crab1.jpg)
 <!--![taunting crab](https://brson.github.io/tmp/crab2.jpg)-->
@@ -16,14 +20,16 @@ I was there. I witnessed it for myself, and I am finally ready to break the sile
 <!--![taunting crab](https://brson.github.io/tmp/crab4.jpg)-->
 <!--![taunting crab](https://brson.github.io/tmp/crab5.jpg)-->
 
-Am I joking? I don't know. What is reality anyway?
+&nbsp;
 
-I do know one thing though…
+Think I'm joking? It doesn't matter. What is reality anyway?
+
+One thing that does matter?
+
+&nbsp;
 
 
-## Rust compile times suck
-
-If you are reading this you probably know it too.
+## Rust compile times are bad
 
 I know it because I encounter it every day. I know it because my coworkers complain about it. I know it because the Rust production users I talk to consistently mention it. I know it because so many of us indicated so [in the last Rust survey][sur].
 
@@ -50,7 +56,6 @@ In this episode:
 - [Early design decisions that favored run-time over compile-time](#user-content-early-decisions-that-favored-run-time-over-compile-time)
 - [Recent work on Rust compile times](#user-content-recent-work-on-rust-compile-times)
 - [In the next episode](#user-content-in-the-next-episode-of-the-tikv-compile-time-saga)
-- [Addendum: Bad metaphore body-count](#user-content-addendum-bad-metaphore-body-count)
 
 
 ## The spectre of poor Rust compile times at PingCAP
@@ -109,6 +114,7 @@ When I worked daily on the Rust compiler it was common for me to have at least t
 
 This was (and probably is) typical of other Rust developers too. I still do the same thing hacking on TiKV today.
 
+<!--
 ---
 
 \* OK, Rust's (self-)compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], called `rustboot`, written in OCaml, had extremely simple static analysis, and extremely naive code generation. Here's how long it takes to build:
@@ -125,15 +131,22 @@ TODO
 
 Lol. Just lol. The comparison is completely unfair, for reasons. But lol, right? If you are curious, the full build logs for both runs are [yonder].
 
-<!-- TODO: maybe a small gif here? -->
 
 [frc]: https://github.com/rust-lang/rust/commit/d6b7c96c3eb29b9244ece0c046d3f372ff432d04
 [tc]: https://github.com/rust-lang/rust/commit/3ed3b8bb7b100afecf7d5f52eafbb70fec27f537
 [yonder]: todo
 
+-->
+
 ---
 
-One of the immediate tasks upon Rust's initial open-sourcing in 2010 was to make it _self-hosting_ &mdash; that is, to write a Rust compiler in Rust. `rustc`, in addition to being written in Rust, would also use [LLVM] as its backend for generating machine code, instead of `rustboot`s hand-written x86 code-generator.
+\* So, historically, how bad have Rust compile times been? A simple barometer here is to see how Rust's self-hosting times have changed over the years, that is the time it takes Rust to build itself. Rust building itself is not directly comparable to Rust building other projects, for a variety of reasons, but I think it will be illustrative.
+
+The [first Rust compiler][frc], from 2010, called `rustboot`, was written in `OCaml`, and it's ultimate purpose was to build a second compiler, `rustc`, written in Rust, and begin the self-hosting bootstrap cycle.
+
+[frc]: https://gist.github.com/brson/31b6f8c5467b050779ce9aa05d41aa84/edit
+
+`rustc`, in addition to being written in Rust, would also use [LLVM] as its backend for generating machine code, instead of `rustboot`s hand-written x86 code-generator.
 
 Rust needed to become self-hosting as a means of "dog-fooding" the language &mdash; writing the Rust compiler in Rust meant that the Rust authors needed to use their own language to write practical software, early in the language design process, which it was hoped would lead to a useful and practical language.
 
@@ -143,12 +156,28 @@ The first time Rust built itself was on April 20, 2011. [It took one hour][self-
 
 [self-host]: https://mail.mozilla.org/pipermail/rust-dev/2011-April/000330.html
 
-That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the old `rustboot` compiler][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations. To compare with the previously-presented build times, that commit that drops OCaml bootstraps in TODO minutes under the same environment ([logs]).
-
-[nocaml]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
-[logs]: todo
+That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the old `rustboot` compiler][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations.
 
 This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
+
+Some timings:
+
+- TODO minutes - `rustboot` building Rust prior to being retired ([commit][cpre], [log][lpre])
+- TODO minutes - `rustc` building Rust immidately after `rustboot`s retirement ([commit][cpost], [log][lpost])
+- TODO minutes - `rustc` building Rust in 2020 ([commit][ctoday], [log][ltoday])
+
+[cpre]: https://github.com/rust-lang/rust/commit/ef75860a0a72f79f97216f8aaa5b388d98da6480
+[cpost]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
+[ctoday]: https://github.com/rust-lang/rust/commit/aa0769b92e60f5298f0b6326b8654c9b04351b98
+[lpre]: todo
+[lpost]: todo
+[ltoday]: todo
+
+Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize the severity of the problem of bad compile times during Rust's crucial early design phase.
+
+<!--
+bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
+-->
 
 <!--
 
@@ -158,6 +187,7 @@ This is where the long, gruelling history of Rust's tragic compile times began, 
 
 -->
 
+<!--
 ---
 
 Note that it is not actually fair to compare Rust's own compile time to the compile time of Rust programs generally, but it is fun because the Rust build takes so hilariously long.
@@ -170,10 +200,8 @@ Part of the reason for this is that Rust has to build itself 3 times to prove th
 
 - _stage2_ - build from current-Rust as built by current-Rust. This proves that current-Rust can build a working current-Rust (or next-Rust), and that the self-hosting cycle will continue.
 
-<!-- todo verify stages -->
-
 The details of how Rust's stages interact is fairly complex, but this explains the basic reason Rust has to be compiled three times. These three stages are necessarily serialized, which does nothing to help its own compile time.
-
+-->
 
 ## (Un)virtuous cycles
 
@@ -192,7 +220,7 @@ Some examples of the Servo-Rust feedback loop,
 - Labeled break and continue [was implemented in order to auto-generate an HTML parser][lbc].
 - Owned closures [were implemented after analyzing closure usage in Servo][oc].
 - Extern function calls used to be considered safe. [This changed in part due to experience in Servo][nu].
-- The migration from green-threading to native threading was heavily informed by the experience of building Servo, observing the FFI overhead of Servo's SpiderMonkey integration, and profiling "hot splits", where the green thread stacks needed to be expanded and contracted.
+- The migration from green-threading to native threading was informed by the experience of building Servo, observing the FFI overhead of Servo's SpiderMonkey integration, and profiling "hot splits", where the green thread stacks needed to be expanded and contracted.
 
 [lbc]: https://github.com/rust-lang/rust/issues/2216
 [oc]: https://github.com/rust-lang/rust/issues/2549#issuecomment-19588158
@@ -200,9 +228,15 @@ Some examples of the Servo-Rust feedback loop,
 
 The co-development of Rust and Servo created a [virtuous cycle] that allowed both projects to thrive. Today, Servo components are deeply integrated into Firefox, ensuring that Rust cannot die while Firefox lives.
 
+[virtuous cycle]: https://en.wikipedia.org/wiki/Virtuous_circle_and_vicious_circle
+
+&nbsp;
+
 Mission accomplished.
 
-[virtuous cycle]: https://en.wikipedia.org/wiki/Virtuous_circle_and_vicious_circle
+![astronaut planting rust flag on the moon](https://brson.github.io/tmp/moonflag2.jpg)
+
+&nbsp;
 
 The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration, making WASM an excellent platform for running Rust, and Rust the first language beyond C and C++ with decent WASM support.
 
@@ -221,83 +255,103 @@ Too many tired metaphores in this section. Sorry, no time to edit them into some
 
 ## Early design decisions that favored run-time over compile-time
 
-What follows is a brief description of some of Rust's key early design decisions that contribute to slow compile times. I only describe them briefly here. The next episode in this series will go into further depth.
+If Rust is designed for poor compile time, then what are those designs specifically?. I describe a few briefly here. The next episode in this series will go into further depth. Some have greater compile-time impact than others, but I assert that all of them cause more time to be spent in compilation than alternative designs.
 
-- Borrowing
+Looking at some of these in retrospect it's tempting to think that "well, of course Rust _must_ have feature _foo_", and it's true that Rust would be a completely different language without many of these features; but language designs are tradeoffs and none of these were predestined to be part of Rust.
 
-- Monomorphization
+- _Borrowing_ &mdash; Rust's defining feature &mdash; its sophisticated pointer analysis &mdash; spends compile-time to make run-time safe.
 
-- Stack unwinding
+- _Monomorphization_ &mdash; Rust translates each generic instantiation into its own machine code, creating code bloat and increasing compile time.
 
-- Macros
+- _Stack unwinding_ &mdash; stack unwinding after unrecoverable exceptions traverses the callstack backwards and runs cleanup code. It requires lots of compile-time book-keeping and code generation.
 
-- LLVM backend
+- _Build scripts_ &mdash; build scripts allow arbitrary code to be run at compile-time, and pull in their own dependencies that need to be compiled. Their unknown side-effects limit assumptions tools can make about them, which e.g. limits caching opportunities.
 
-- Relying too much on the LLVM optimizer
+- _Macros_ &mdash; macros require multiple passes to expand, expand to often surprising amounts of hidden code, and impose limitations on partial parsing. Procudural macros have negative impacts similar to build scripts.
 
-- Split compiler / package manager
+- _LLVM backend_ &mdash; LLVM produces good machine code, but runs relatively slowly.
 
-- Per-compilation-unit code-generation
+- _Relying too much on the LLVM optimizer_ &mdash; Rust is well-known for generating a large quantity of LLVM IR and letting LLVM optimize it away. This is exacerbated by duplication from monomorphization.
 
-- Single-threaded compiler
+- _Split compiler / package manager_ &mdash; although it is normal for languages to have a package manager seperate from the compiler, in Rust at least this results in both `cargo` and `rustc` having imperfect and redundant information about the overall compilation pipeline. As more parts of the pipeline are short-circuited for efficiency, more metadata needs to be transfered between instances of the compiler, mostly through the filesystem, which has overhead.
 
-- Traits and trait coherence
+- _Per-compilation-unit code-generation_ &mdash; `rustc` generates machine code each time it compiles a crate, but it doesn't need to &mdash; with most Rust projects being statically linked, the machine code isn't needed until the final link step. The may be efficiencies to be had by completely separating analysis and code generation.
 
-- Tests in same compilation unit as code
+- _Single-threaded compiler_ &mdash; ideally, all CPUs are occupied for the entire compilation. This is not close to true with Rust today. And with the original compiler being single threaded, the language is not as friendly to parallel compilation as it might be. There is effort going into parallelizing the compiler, but it may never use all your cores.
+
+- _Trait coherence_ &mdash; Rust's traits have a property called "coherence", which makes it impossible to define implementations that conflict with each other. Trait coherence imposes restrictions on where code is allowed to live such that it is difficult to decompose Rust abstractions into, small, easily-parallelizable compilation units.
+
+- _Tests next to code_ &mdash; Rust encourages tests to reside in the same codebase as the code they are testing. With Rust's compilation model this requires compiling and linking that code twice, which is expensive, particularly for large crates.
 
 
 ## Recent work on Rust compile times
 
-There is always work going on to improve Rust compile times. Here is a selection of the activity I'm aware of from the last year or two. Thanks to everybody who helps with this problem.
+The situation isn't hopeless. Not at all. There is always work going on to improve Rust compile times, and there are still many avenues to be explored. I'm hopefull that we'll continue to see improvements. Here is a selection of the activity I'm aware of from the last year or two. Thanks to everybody who helps with this problem.
 
 - The Rust compile-time [master issue]
   - Tracks various work to improve compile times.
   - Contains a great overview of factors that affect Rust compilation performance and potential mitigation strategies.
+
 - Pipelined compilation ([1][pipe1], [2][pipe2], [3][pipe3])
   - Typechecks downstream crates in parallel with upstream codegen. Now on by default on the stable channel.
   - Developed by [@alexcrichton] and [@nikomatsakis].
+
 - Parallel rustc ([1][parc1], [2][parc2], [3][parc3])
   - Runs analysis phases of the compiler in parallel. Not yet availble on the stable channel.
   - Developed by [@Zoxc], [@michaelwoerister], [@oli-obk], and others.
+
 - [MIR-level constant propagation][cprop]
   - Performs constant propagation on MIR, which reduces duplicated LLVM work on monomorphized functions.
   - Developed by [@wesleywiser].
+
 - [MIR optimizations][mo1]
   - Optimizing MIR should be faster that optimizeng monomorphized LLVM IR.
   - Not in stable compilers yet.
   - Developed by [@wesleywiser] and others.
+
 - `cargo build -Ztimings` ([1][cbt1], [2][cbt2])
   - Collects and graphs information about cargo's parallel build timings.
   - Developed by [@ehuss] and [@luser].
+
 - `rustc -Zself-profile` ([1][sp1], [2][sp2], [3][sp3])
   - Generates detailed information about `rustc`'s internal performance.
   - Developed by [@wesleywiser] and [@michaelwoerister].
+
 - [Shared monomorphizations][sm]
   - Reduces code bloat by deduplicating monomorphizations that occur in multiple crates.
   - Enabled by default if the optimization level is less than 3.
   - Developed by [@michaelwoerister].
+
 - [perf.rust-lang.org]
   - Rust's compile-time performance is tracked in detail. Benchmarks continue to be added.
   - Developed by [@nrc], [@Mark-Simulacrum], [@nnethercote] and many more.
+
 - [cargo-bloat]
   - Finds what occupies the most space in binaries. Bloat is correlated with compile time.
   - Developed by [@RazrFalcon] and others.
+
 - [cargo-feature-analyst]
   - Finds unused features.
   - Developed by [@psinghal20].
+
 - [cargo-udeps]
   - Finds unused crates.
   - Developed by [@est31].
+
 - [twiggy]
   - Profiles code size, which is corellated with compile time.
   - Developed by [@fitzgen], [@data-pup], and others.
+
 - [rust-analyzer]
   - A new language server for Rust with faster response time than the original [RLS].
   - Developed by [@matklad], [@flodiebold], [@kjeremy], and many others.
+
 - ["How to alleviate the pain of Rust compile times"][ctpain]
   - Blog post by vfoley.
+
 - ["Thoughts on Rust bloat"][trb]
   - Blog post by [@raphlinus]
+
 - Nicholas Nethercote's work on `rustc` optimization
   - ["How to speed up the Rust compiler in 2019"][nn1]
   - ["The Rust compiler is still getting faster"][nn2]
@@ -360,13 +414,14 @@ I apologize to any person or project I didn't credit.
 
 ## In the next episode of Rust Compile-time Adventures in TiKV
 
-So Rust dug itself deep into a corner over the years and will probably be digging itself back out until the end of time (or the end of Rust &mdash; same thing, really). Can Rust compile-time be saved from its own run-time success? Will TiKV ever build fast enough to satisfy my managers?
+So Rust dug itself deep into a corner over the years and will probably be digging itself back out until the end of time (or the end of Rust &mdash; same thing, really &#x1F92A;). Can Rust compile-time be saved from Rust's own run-time success? Will TiKV ever build fast enough to satisfy my managers?
 
-In the next episode, we'll deep-dive into the specifics of Rust's language design that cause it to compile so slow.
+In the next episode, we'll deep-dive into the specifics of Rust's language design that cause it to compile slowly.
 
 Stay Rusty, friends.
 
 
+<!--
 ## Addendum: Bad metaphore body-count
 
 Let's see how many cliché's I managed to bake into this one:
@@ -386,7 +441,7 @@ Let's see how many cliché's I managed to bake into this one:
 - "bake into this one"
 
 I'm sorry. I'm sorry. I don't care. Leave me alone.
-
+-->
 
 <!--
 
@@ -397,5 +452,5 @@ images:
 - https://commons.wikimedia.org/wiki/File:K%C4%B1z%C4%B1l%C4%B1rmak_near_the_crab.jpg
 - https://cdn4.gamepur.com/images/god-of-war/Mr_Krabs_And_Money.jpg
 - http://nick.mtvnimages.com/nick/video/images/spongebob-squarepants/spongebob-squarepants-mr-krabs-formula-clip-16x9.jpg?quality=0.75&maxdimension=600&height=225&width=400
-
+- https://www.bbc.co.uk/radioscotland/60s/moonlandings/05/
 -->
