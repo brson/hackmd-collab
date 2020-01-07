@@ -114,30 +114,6 @@ When I worked daily on the Rust compiler it was common for me to have at least t
 
 This was (and probably is) typical of other Rust developers too. I still do the same thing hacking on TiKV today.
 
-<!--
----
-
-\* OK, Rust's (self-)compile time actually wasn't _always_ terrible. The [first Rust compiler][frc], called `rustboot`, written in OCaml, had extremely simple static analysis, and extremely naive code generation. Here's how long it takes to build:
-
-```
-TODO
-```
-
-That's only TODO minutes. For comparison here's a build of [today's compiler][tc] (as of December 2019):
-
-```
-TODO
-```
-
-Lol. Just lol. The comparison is completely unfair, for reasons. But lol, right? If you are curious, the full build logs for both runs are [yonder].
-
-
-[frc]: https://github.com/rust-lang/rust/commit/d6b7c96c3eb29b9244ece0c046d3f372ff432d04
-[tc]: https://github.com/rust-lang/rust/commit/3ed3b8bb7b100afecf7d5f52eafbb70fec27f537
-[yonder]: todo
-
--->
-
 ---
 
 \* So, historically, how bad have Rust compile times been? A simple barometer here is to see how Rust's self-hosting times have changed over the years, that is the time it takes Rust to build itself. Rust building itself is not directly comparable to Rust building other projects, for a variety of reasons, but I think it will be illustrative.
@@ -179,29 +155,6 @@ Thesis: The Rust language developers became acclimated to Rust's poor self-hosti
 bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
 -->
 
-<!--
-
-- init: https://gist.github.com/a6b599da4e1a7faa177c707baa095caf
-- bootstrap:
-- today:
-
--->
-
-<!--
----
-
-Note that it is not actually fair to compare Rust's own compile time to the compile time of Rust programs generally, but it is fun because the Rust build takes so hilariously long.
-
-Part of the reason for this is that Rust has to build itself 3 times to prove that it is self hosting. It does this in 3 "stages":
-
-- _stage0_ - build from the previous release's binary. This proves that previous-Rust can build current-Rust.
-
-- _stage1_ - build from current-Rust as built by previous-Rust. This proves that current-Rust can build current-Rust, but not that current-Rust-built-by-current-Rust works can build current-Rust (or next-Rust).
-
-- _stage2_ - build from current-Rust as built by current-Rust. This proves that current-Rust can build a working current-Rust (or next-Rust), and that the self-hosting cycle will continue.
-
-The details of how Rust's stages interact is fairly complex, but this explains the basic reason Rust has to be compiled three times. These three stages are necessarily serialized, which does nothing to help its own compile time.
--->
 
 ## (Un)virtuous cycles
 
