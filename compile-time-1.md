@@ -160,9 +160,7 @@ bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
 
 In the Rust project we like processes that reinforce and build upon themselves. This is one of the keys to Rust's success, both as a language and community.
 
-As an obvious, hugely-successful example, consider [Servo]. Servo is a web browser built in Rust (officially it's just a browser "engine"), and Rust was created with the explicit purpose of building Servo.
-
-Rust and Servo are sister-projects. They were created by the same team (initially), at roughly the same time, and they evolved together. Not only was Rust built to create Servo, but Servo was built to inform the design of Rust.
+As an obvious, hugely-successful example, consider [Servo]. Servo is a web browser built in Rust, and Rust was created with the explicit purpose of building Servo. Rust and Servo are sister-projects. They were created by the same team (initially), at roughly the same time, and they evolved together. Not only was Rust built to create Servo, but Servo was built to inform the design of Rust.
 
 The initial few years of both projects were extremely difficult, with both projects evolving in parallel. The often-used metaphor of the [Ship of Theseus][st] is apt: we were constantly rebuilding the ship we were sailing, constantly rebuilding Rust in order to sail the seas of Servo. There is no doubt that the experience of building Servo with Rust while simultaneously building Rust itself led directly to many of the good decisions that make Rust the practical language it is.
 
@@ -191,13 +189,13 @@ Mission accomplished.
 
 &nbsp;
 
-The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration, making WASM an excellent platform for running Rust, and Rust the first language beyond C and C++ with decent WASM support.
+The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration (the author of Emscripten and I had desks next to each other for years), making WASM an excellent platform for running Rust, and Rust well-suited to target WASM.
 
 [WebAssembly]: https://webassembly.org/
 
-Sadly there was no such reinforcement to drive down compile times. The opposite is probably true: the more Rust became known as a "fast" language the more important it was to be "the fastest" language; and the more Rust's developers got used to developing their Rust projects across multiple branches, context switching between tasks as I described earlier, the less pressure was felt to address compile times.
+Sadly there was no such reinforcement to drive down Rust compile times. The opposite is probably true: the more Rust became known as a _fast_ language the more important it was to be _the fastest_ language; and the more Rust's developers got used to developing their Rust projects across multiple branches, context switching between builds, the less pressure was felt to address compile times.
 
-That is, until Rust was actually released to production and met by a wide audince that was not used to such abhorrent compile times.
+That is, until Rust was actually released to production and met by a wide audince that was not so tolerant of slow compile times.
 
 For years Rust [slowly boiled][boil] in its own poor compile times, not realizing how bad it had gotten until it was too late. It was 1.0. Those decisions were locked in. Rust was boiled.
 
