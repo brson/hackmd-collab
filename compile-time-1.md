@@ -152,7 +152,13 @@ Some timings:
 Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize the severity of the problem of bad compile times during Rust's crucial early design phase.
 
 <!--
+
 bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
+
+bash -c "git log --oneline -1 && /usr/bin/time make ENABLE_OPTIMIZED=1 2>&1" | tee out.txt
+
+llvm: https://gist.github.com/cb95b7b975b30fa1832174d0313db6d4
+
 -->
 
 
@@ -273,6 +279,10 @@ The situation isn't hopeless. Not at all. There is always work going on to impro
   - Enabled by default if the optimization level is less than 3.
   - Developed by [@michaelwoerister].
 
+- [Cranelift backend][cbe]
+  - Reduced debug compile times by used [cranelift] for code generation.
+  - Developed by [@bjorn3]
+
 - [perf.rust-lang.org]
   - Rust's compile-time performance is tracked in detail. Benchmarks continue to be added.
   - Developed by [@nrc], [@Mark-Simulacrum], [@nnethercote] and many more.
@@ -310,6 +320,9 @@ The situation isn't hopeless. Not at all. There is always work going on to impro
   - ["How to speed up the Rust compiler some more in 2019"][nn4]
   - ["How to speed up the Rust compiler one last time in 2019"][nn5]
 
+[cranelift]: https://github.com/bytecodealliance/cranelift
+[cbe]: https://www.reddit.com/r/rust/comments/enxgwh/cranelift_backend_for_rust/
+[@bjorn3]: https://github.com/bjorn3
 [mo1]: https://github.com/rust-lang/rust/pulls?q=mir-opt
 [nn5]: https://blog.mozilla.org/nnethercote/2019/12/11/how-to-speed-up-the-rust-compiler-one-last-time-in-2019/
 [nn4]: https://blog.mozilla.org/nnethercote/2019/10/11/how-to-speed-up-the-rust-compiler-some-more-in-2019/
