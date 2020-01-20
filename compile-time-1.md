@@ -15,10 +15,6 @@ It's brilliantly insidious.
 &#x1f942; **WE GOT YOU GOOD!** &#x1f942;
 
 ![taunting crab](https://brson.github.io/tmp/crab1.jpg)
-<!--![taunting crab](https://brson.github.io/tmp/crab2.jpg)-->
-<!--![taunting crab](https://brson.github.io/tmp/crab3.jpg)-->
-<!--![taunting crab](https://brson.github.io/tmp/crab4.jpg)-->
-<!--![taunting crab](https://brson.github.io/tmp/crab5.jpg)-->
 
 &nbsp;
 
@@ -136,22 +132,6 @@ That first super-slow bootstrap was an anomaly of bad code-generation and other 
 
 This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
 
-<!--
-Some timings:
-
-- TODO minutes - `rustboot` building Rust prior to being retired ([commit][cpre], [log][lpre])
-- TODO minutes - `rustc` building Rust immidately after `rustboot`s retirement ([commit][cpost], [log][lpost])
-- TODO minutes - `rustc` building Rust in 2020 ([commit][ctoday], [log][ltoday])
-
-[cpre]: https://github.com/rust-lang/rust/commit/ef75860a0a72f79f97216f8aaa5b388d98da6480
-[cpost]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
-[ctoday]: https://github.com/rust-lang/rust/commit/aa0769b92e60f5298f0b6326b8654c9b04351b98
-[lpre]: todo
-[lpost]: todo
-[ltoday]: todo
-
--->
-
 Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize the severity of the problem of bad compile times during Rust's crucial early design phase.
 
 _Note: I wanted to share historic self-hosting times here to support the above thesis, but after many hours and obstactles attempting to build Rust revisions from 2011, I finally gave up and decided I just had to publish this piece without. Instead here are some made up numbers:_
@@ -161,16 +141,6 @@ _Note: I wanted to share historic self-hosting times here to support the above t
 - _188 giga-sloths_ - `rustc` building Rust in 2020
 
 Anyway, last time I bootstrapped Rust a few months ago it took over five hours.
-
-<!--
-
-bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
-
-bash -c "git log --oneline -1 && /usr/bin/time make ENABLE_OPTIMIZED=1 2>&1" | tee out.txt
-
-llvm: https://gist.github.com/cb95b7b975b30fa1832174d0313db6d4
-
--->
 
 
 ## (Un)virtuous cycles
@@ -397,6 +367,8 @@ Stay Rusty, friends.
 
 
 <!--
+## Old notes
+
 ## Addendum: Bad metaphore body-count
 
 Let's see how many cliché's I managed to bake into this one:
@@ -416,9 +388,6 @@ Let's see how many cliché's I managed to bake into this one:
 - "bake into this one"
 
 I'm sorry. I'm sorry. I don't care. Leave me alone.
--->
-
-<!--
 
 images:
 
@@ -428,4 +397,30 @@ images:
 - https://cdn4.gamepur.com/images/god-of-war/Mr_Krabs_And_Money.jpg
 - http://nick.mtvnimages.com/nick/video/images/spongebob-squarepants/spongebob-squarepants-mr-krabs-formula-clip-16x9.jpg?quality=0.75&maxdimension=600&height=225&width=400
 - https://www.bbc.co.uk/radioscotland/60s/moonlandings/05/
+
+
+![taunting crab](https://brson.github.io/tmp/crab2.jpg)
+![taunting crab](https://brson.github.io/tmp/crab3.jpg)
+![taunting crab](https://brson.github.io/tmp/crab4.jpg)
+![taunting crab](https://brson.github.io/tmp/crab5.jpg)
+
+Some timings:
+
+- TODO minutes - `rustboot` building Rust prior to being retired ([commit][cpre], [log][lpre])
+- TODO minutes - `rustc` building Rust immidately after `rustboot`s retirement ([commit][cpost], [log][lpost])
+- TODO minutes - `rustc` building Rust in 2020 ([commit][ctoday], [log][ltoday])
+
+[cpre]: https://github.com/rust-lang/rust/commit/ef75860a0a72f79f97216f8aaa5b388d98da6480
+[cpost]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
+[ctoday]: https://github.com/rust-lang/rust/commit/aa0769b92e60f5298f0b6326b8654c9b04351b98
+[lpre]: todo
+[lpost]: todo
+[ltoday]: todo
+
+bash -c "git log --oneline -1 && /usr/bin/time make 2>&1" | tee out.txt
+
+bash -c "git log --oneline -1 && /usr/bin/time make ENABLE_OPTIMIZED=1 2>&1" | tee out.txt
+
+llvm: https://gist.github.com/cb95b7b975b30fa1832174d0313db6d4
+
 -->
