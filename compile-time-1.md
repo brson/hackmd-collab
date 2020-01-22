@@ -133,6 +133,8 @@ The first time Rust built itself was on April 20, 2011. [It took one hour][self-
 
 That first super-slow bootstrap was an anomaly of bad code-generation and other easily fixable early bugs (probably, I don't exactly recall). `rustc`'s performance quickly improved, and Graydon quickly [threw away the old `rustboot` compiler][nocaml] since there was nowhere near enough manpower and motivation to maintain parallel implementations.
 
+[nocaml]: https://github.com/rust-lang/rust/commit/6997adf76342b7a6fe03c4bc370ce5fc5082a869
+
 This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
 
 Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize the severity of the problem of bad compile times during Rust's crucial early design phase.
