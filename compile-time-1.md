@@ -137,15 +137,15 @@ That first super-slow bootstrap was an anomaly of bad code-generation and other 
 
 This is where the long, gruelling history of Rust's tragic compile times began, 11 months after it was initially released in June 2010.
 
-Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize the severity of the problem of bad compile times during Rust's crucial early design phase.
-
-_Note: I wanted to share historic self-hosting times here to support the above thesis, but after many hours and obstactles attempting to build Rust revisions from 2011, I finally gave up and decided I just had to publish this piece without. Instead here are some made up numbers:_
+_Note: I wanted to share historic self-hosting times here, but after many hours and obstactles attempting to build Rust revisions from 2011, I finally gave up and decided I just had to publish this piece without. Instead here are some made up numbers:_
 
 - _7 femto-bunnies_ - `rustboot` building Rust prior to being retired
 - _49 kilo-hamsters_ - `rustc` building Rust immidately after `rustboot`s retirement
 - _188 giga-sloths_ - `rustc` building Rust in 2020
 
 Anyway, last time I bootstrapped Rust a few months ago it took over five hours.
+
+Thesis: The Rust language developers became acclimated to Rust's poor self-hosting times and failed to recognize or address the severity of the problem of bad compile times during Rust's crucial early design phase.
 
 
 ## (Un)virtuous cycles
