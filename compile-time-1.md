@@ -181,9 +181,11 @@ Mission accomplished.
 
 &nbsp;
 
-The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration (the author of Emscripten and I had desks next to each other for years), making WASM an excellent platform for running Rust, and Rust well-suited to target WASM.
+The previously-mentioned early self-hosting was similarly crucial to Rust's design, making Rust a superior language for building Rust compilers. Likewise, Rust and [WebAssembly] were developed in close collaboration (the author of [Emscripten], the author of [Cranelift], and I had desks next to each other for years), making WASM an excellent platform for running Rust, and Rust well-suited to target WASM.
 
 [WebAssembly]: https://webassembly.org/
+[Emscripten]: https://github.com/emscripten-core/emscripten
+[Cranelift]: https://github.com/CraneStation/cranelift
 
 Sadly there was no such reinforcement to drive down Rust compile times. The opposite is probably true: the more Rust became known as a _fast_ language the more important it was to be _the fastest_ language; and the more Rust's developers got used to developing their Rust projects across multiple branches, context switching between builds, the less pressure was felt to address compile times.
 
