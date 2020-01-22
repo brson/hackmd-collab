@@ -1,5 +1,7 @@
 # The Rust Compilation Model Calamity
 
+![header image](https://brson.github.io/tmp/calamity-header.jpg)
+
 ## Or, Rust Compile-time Adventures in TiKV: Part 1
 
 ---
