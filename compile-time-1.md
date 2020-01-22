@@ -4,8 +4,6 @@
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
----
-
 The Rust programming language was designed for slow compilation times.
 
 I was there. I witnessed it for myself, and I am finally ready to break the silence: Rust is a hoax. It's a prank the language designers played on you, the Rust user &mdash; adopt this high-performance, high-reliability language for your products, and we'll reduce your productivity to a crawl.
