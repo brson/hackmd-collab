@@ -368,7 +368,7 @@ Stay Rusty, friends.
 
 ## Thanks
 
-A number of people helped with this blog series. Thanks especially to Niko Matsakis, Graydon Hoare, Ted Mielczarek for their insights, and Calvin Weng for proofreading and editing.
+A number of people helped with this blog series. Thanks especially to Niko Matsakis, Graydon Hoare, and Ted Mielczarek for their insights, and Calvin Weng for proofreading and editing.
 
 
 <!--
