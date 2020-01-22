@@ -156,7 +156,7 @@ The initial few years of both projects were extremely difficult, with both proje
 
 [st]: https://en.wikipedia.org/wiki/Ship_of_Theseus
 
-Some examples of the Servo-Rust feedback loop,
+Some cursory examples of the Servo-Rust feedback loop,
 
 - Labeled break and continue [was implemented in order to auto-generate an HTML parser][lbc].
 - Owned closures [were implemented after analyzing closure usage in Servo][oc].
