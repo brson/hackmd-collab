@@ -203,7 +203,7 @@ Looking at some of these in retrospect it's tempting to think that "well, of cou
 
 - _Stack unwinding_ &mdash; stack unwinding after unrecoverable exceptions traverses the callstack backwards and runs cleanup code. It requires lots of compile-time book-keeping and code generation.
 
-- _Build scripts_ &mdash; build scripts allow arbitrary code to be run at compile-time, and pull in their own dependencies that need to be compiled. Their unknown side-effects limit assumptions tools can make about them, which e.g. limits caching opportunities.
+- _Build scripts_ &mdash; build scripts allow arbitrary code to be run at compile-time, and pull in their own dependencies that need to be compiled. Their unknown side-effects and unknown inputs and outputs limit assumptions tools can make about them, which e.g. limits caching opportunities.
 
 - _Macros_ &mdash; macros require multiple passes to expand, expand to often surprising amounts of hidden code, and impose limitations on partial parsing. Procudural macros have negative impacts similar to build scripts.
 
@@ -364,6 +364,11 @@ So Rust dug itself deep into a corner over the years and will probably be diggin
 In the next episode, we'll deep-dive into the specifics of Rust's language design that cause it to compile slowly.
 
 Stay Rusty, friends.
+
+
+## Thanks
+
+A number of people helped with this blog series. Thanks especially to Niko Matsakis, Graydon Hoare, Ted Mielczarek for their insights, and Calvin Weng for proofreading and editing.
 
 
 <!--
