@@ -1,16 +1,23 @@
-# Rust's designs for poor compile time
+# What makes Rust compile time slow?
 
-# The Rust Compilation Model Calamity
+![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
-## Or, Rust Compile-Time Adventures in TiKV: Part 1
+_The Rust programming language was designed for slow compilation times._
 
----
+I mean, that wasn't _the goal_. As is often cautioned in debates among their designers, programming language design is full of tradeoffs. One of those fundamental tradeoffs is __run-time performance__ vs. __compile-time performance__, and the Rust team nearly always (if not always) chose run-time over compile-time.
 
-The rest of this post details some of the biggest reasons that Rust's intrinsic design choices and historical architectural choices discourage fast compilation.
+&nbsp;
+
+
+## Rust Compile-time Adventures with TiKV: Episode 2
+
+In [the previous post in the series][prev] we covered Rust's early development history, and how it led to a series of decisions that resulted in a high-performance language that compiles slowly. This time we'll go into detail about some of the reasons that Rust's design choices discourage fast compilation.
+
+[prev]: https://pingcap.com/blog/rust-compilation-model-calamity/
+
 
 - [A brief aside about compile-time scenarios](#user-content-a-brief-aside-about-compile-time-scenarios)
 - [Tradeoff #1: Monomorphized generics](#user-content-tradeoff-1-monomorphized-generics)
-  - [Testing the impact of monomorphization on Rust compile times](#user-content-testing-the-impact-of-monomorphization-on-rust-compile-times)
 - [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
   - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
   - [Internal parallelism](#user-content-internal-parallelism)
@@ -20,10 +27,9 @@ The rest of this post details some of the biggest reasons that Rust's intrinsic 
 - [Tradeoff #5: Poor LLVM IR generation](#user-content-tradeoff-5-poor-llvm-ir-generation)
 - [Tradeoff #6: Batch compilation](#user-content-tradeoff-6-batch-compilation)
 - [Tradeoff #7: Build scripts and procedural macros](#user-content-tradeoff-7-build-scripts-and-procedural-macros)
-- [Tradeoff #8: Procedural macros](#user-content-tradeoff-8-procedural-macros)
-- [Tradeoff #9: Fixed compilation profiles](#user-content-tradeoff-9-fixed-compilation-profiles)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
-- [Addendum: Thanks](#user-content-addendum-thanks)
+- [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
+- [Thanks](#user-content-thanks)
 
 
 ## A brief aside about compile-time scenarios
@@ -321,7 +327,7 @@ OK, sure enough, we can see the same pattern: in the first, there's no indirecti
 
 These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
 
-It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter. Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so once a function pointer has been used once it is likely to be called quickly the next time; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which puts great pressure on the CPU's instruction cache.
+It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so once a function pointer has been used once it is likely to be called quickly the next time; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which puts great pressure on the CPU's instruction cache.
 
 C++ and Rust both strongly encourage monomorphization, both generate some of the fastest machine code of any programming language, and both have problems with code bloat. This seems to be evidence that the monomorphization strategy is indeed the faster of the two. There is though a curious counter-example: C. C has no generics at all, and C programs are often both the slimmest _and_ fastest in their class. Reproducing the monomorphization strategy in C requires using the ungainly C macro preprocessor, and modern object-orientation patterns in C are often vtable-based.
 
@@ -380,79 +386,6 @@ All that is only touching on the surface of the tradeoffs between static and dyn
 [Niko]: https://github.com/nikomatsakis
 
 _Takeaway: monomorphized are easier to implement and faster, but have greater compile-time cost._
-
-
-### Testing the impact of monomorphization on Rust compile times
-
-As I said before, I don't think there's much solid research into the actual impact of dynamic vs. static dispatch on compile times &mdash; just a lot of inherited wisdom (but leave comments if you have good links and I'll update this).
-
-So let's do an experiment!
-
-Obviously, this isn't going to be the definitive word on the subject, just a quick, Rust-specific experiment, but now I'm curious, and I want to give you some numbers to back this all up.
-
-I want to measure the effect of increasing numbers of generic function instantiations on both compile-time and run-time. Due to the contrast between static call inlining vs. indirect call runtime overhead, I suspect there are multiple interesting cases, so I want to try both "deep" and "wide" instantiations, with deep codebases having a deep call graph with few generic type instantiations, and wide codebases a shallow call graph with many instantiations; add to that "in-between" cases with middling call graph depth and type instantiations.
-
-So my experiment is going to be built around a code generator with two inputs: call-graph depth, generic type width. It will generate code like the following.
-
-For static dispatch:
-
-```rust
-// depth = 2, width = 2
-
-#![feature(test)]
-extern crate test;
-
-trait Io { fn do_io(&self); }
-
-#[derive(Debug)]
-struct T0(u8);
-impl Io for T0 { fn do_io(&self) { black_box(self) } }
-
-#[derive(Debug)]
-struct T1(u8, u8);
-impl Io for T1 { fn do_io(&self) { black_box(self) } }
-
-fn lvl_0<T: Io>(v: T) { lvl_1(v) }
-fn lvl_1<T: Io>(v: T) { v.do_io() }
-
-fn main() {
-    let v0 = T0(0);
-	lvl_0(v0);
-}
-```
-
-For dynamic dispatch:
-
-```rust
-// depth = 2, width = 2
-
-#![feature(test)]
-extern crate test;
-
-trait Io { fn do_io(&self); }
-
-#[derive(Debug)]
-struct T0(u8);
-impl Io for T0 { fn do_io(&self) { black_box(self) } }
-
-#[derive(Debug)]
-struct T1(u8, u8);
-impl Io for T0 { fn do_io(&self) { black_box(self)} }
-
-fn lvl_0(v: &dyn Io) { lvl_1(v) }
-fn lvl_1(v: &dyn Io) { v.do_io() }
-
-fn main() {
-    let v0 = T0(0);
-	lvl_0(v0);
-}
-```
-
-The reason for "bottomming out" in an I/O function is to prevent the compiler from [optimizing away the entire program][optaway]. The downside of I/O is that it an I/O operation tends to be orders of magnitude slower than a compute operation, which makes it difficult to measure small changes in CPU usage. So our I/O is a call to [`black_box`], an assembly-language function that does nothing, but is opaque to the compiler, preventing it from optimizing away the entire program.
-
-[optaway]: todo
-
-TODO
 
 
 ## Tradeoff #2: Huge compilation units
@@ -667,41 +600,38 @@ In that talk he also provided some examples of how the Rust language was acciden
 
 TODO
 
-
 ## Tradeoff #7: Build scripts and procedural macros
 
-Build scripts are a source of non-determinism in the build process. Cargo hands control over to an arbitrary program that can do anything it wants,
-which can have arbitrary effects on downstream compilation steps.
+Cargo allows the build to be customized with two types of custom Rust programs: build scripts and procedural macros. The mechanism for each is different but they both similarly introduce arbitrary computation into the compilation process.
 
-The main negative effect for build times is that, I believe, crates that contain build scripts are essentially uncacheable. Imagine if a distributed build tool like [sccache] gets a request to build a crate with a build script. It might have output artifacts cached for that crate, but it can not know whether rebuilding the crate will result in the same artifacts.
+They negatively impact compilation time in several different ways:
 
-TODO verify this
+First, these types of programs have their own crate ecosystem that also needs to be compiled, so using procedural macros will usually require also compiling crates like [`syn`].
 
-[sccache]: todo
+Second, these tools are often used for code generation, and their invocation expands to sometimes large amounts of code.
 
-Aside: the dynamism of build scripts is one of the main cargo features that frustrates teams trying to integrate Rust into existing systems. Without build scripts, the build "plan" for any Rust project is entirely static and can e.g. be exported in a format that other build systems can integrate. Build scripts though can do anything and introduce changes to the build plan as it is running. They are very cargo-specific.
+Third, procedural macros impede distributed build caching tools like [`sccache`]. The reason why is unexpected though &mdash; rustc today loads procedural macros as dynamic libraries, one of the few common uses of dynamic libraries in the Rust ecosystem. `sccache` isn't able to cache dynamic library artifacts because it doesn't have visibility into how the linker was invoked to create the dynamic library. So using a scache to build a project that heavily relies on procedural macros will often not speed up the build.
 
+[`syn`]: https://crates.io/crates/syn
+[`sccache`]: https://github.com/mozilla/sccache
 
-## Tradeoff #8: Procedural macros
-
-## Tradeoff #9: Fixed compilation profiles
 
 
 ## All that stuff summarized
 
-## In the next episode of Rust Compile-time Adventures in TiKV
 
-Things are looking dire for Rust developers' productivity, and TiKV hackers are grumbling during their frequent coffee breaks! Can Rust succeed? Can Rust compile TiKV fast enough to prevent PingCAP's product managers from &nbsp; (╯°□°）╯︵&nbsp;┻━┻ &nbsp; and rewriting the entire thing in C++ or Go or Pony?
+## In the next episode of Rust Compile-time Adventures with TiKV
 
-In the next entry of this series we'll talk about the nuances of the many Rust compile time use cases, which aspects of Rust affect which use cases, how users percieve and are affected by Rust compile time, and all the ideas the TiKV team came up with to free ourselves from this Rusting, suffering life.
+In the next episode of this series we'll do an experiment to show the tradeoffs between dynamic and static dispatch in Rust.
 
 Stay Rusty, friends.
 
 
+## Thanks
 
-## Addendum: Thanks
+A number of people helped with this blog series. Thanks especially to Niko Matsakis, Graydon Hoare, and Ted Mielczarek for their insights, and Calvin Weng for proofreading and editing.
 
-This work has benefited from the input and review of several people. Thanks especially to Calvin Weng for the reviews. Thanks to Niko Matsakis for advice about Rust's compile time behavior. Thanks to Graydon Hoare for recollections about Rust's design. Thanks to others for their patience.
+
 
 
 <!--
@@ -888,6 +818,16 @@ graydon: idk lately I've got interested in array languages which have such a dif
 
 -->
 
+<!--
+
 TODO:
 - monomorphizations are shared
   - https://github.com/rust-lang/rust/issues/47317
+
+-->
+
+<!--
+- Comment Link: https://news.ycombinator.com/item?id=22197082
+- Comment Link: https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/
+- Comment Link: https://lobste.rs/s/xup5lo/rust_compilation_model_calamity
+-->
