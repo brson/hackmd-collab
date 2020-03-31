@@ -2,9 +2,13 @@
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
-_The Rust programming language was designed for slow compilation times._
+The Rust programming language creates super-fast software, but compiles that software slowly.
 
-I mean, that wasn't _the goal_. As is often cautioned in debates among their designers, programming language design is full of tradeoffs. One of those fundamental tradeoffs is __run-time performance__ vs. __compile-time performance__, and the Rust team nearly always (if not always) chose run-time over compile-time.
+In this series we explore Rust's compile times within the context of [TiKV], the key-value store
+behind the [TiDB] database.
+
+[TiKV]: https://github.com/tikv/tikv
+[TiDB]: https://github.com/pingcap/tidb
 
 &nbsp;
 
@@ -23,10 +27,10 @@ In [the previous post in the series][prev] we covered Rust's early development h
   - [Internal parallelism](#user-content-internal-parallelism)
   - [Large vs. small crates](#user-content-large-vs-small-crates)
 - [Tradeoff #3: Trait coherence and the orphan rule](#user-content-tradeoff-3-trait-coherence-and-the-orphan-rule)
-- [Tradeoff #4: LLVM](#user-content-tradeoff-4-llvm)
-- [Tradeoff #5: Poor LLVM IR generation](#user-content-tradeoff-5-poor-llvm-ir-generation)
-- [Tradeoff #6: Batch compilation](#user-content-tradeoff-6-batch-compilation)
-- [Tradeoff #7: Build scripts and procedural macros](#user-content-tradeoff-7-build-scripts-and-procedural-macros)
+- [Tradeoff #4: LLVM and poor LLVM IR generation](#user-content-tradeoff-4-llvm-and-poor-llvm-ir-generation)
+- [Tradeoff #5: Batch compilation](#user-content-tradeoff-5-batch-compilation)
+- [Tradeoff #6: Build scripts and procedural macros](#user-content-tradeoff-6-build-scripts-and-procedural-macros)
+- [Tradeoff #7: Static linking (#user-content-tradeoff-7-static-linking)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
 - [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
 - [Thanks](#user-content-thanks)
@@ -56,22 +60,25 @@ In addition to those there are also
 
 These are mostly similar to development mode and release mode respectively, though the interactions in cargo between development / test and release / bench can be subtle and surprising. There may be other profiles (TiKV has more), but those are the obvious ones for Rust, as built-in to cargo. Beyond that there are other scenarios, like typechecking only (`cargo check`), building just a single project (`cargo build -p`), single-core vs. multi-core, local vs. distributed, local vs. CI.
 
-Compile time is also affected by human perception &mdash; it's possible for compile time to feel bad when it's actually decent, and to feel decent when it's actually not so great. This is one of the premises behind the [Rust Language Server][RLS] (RLS) and [rust-analyzer] &mdash; if developers are getting constant, real-time feedback in their IDE then it doesn't matter so much how long a full compile takes.
+Compile time is also affected by human perception &mdash; it's possible for compile time to feel bad when it's actually decent, and to feel decent when it's actually not so great. This is one of the premises behind the [Rust Language Server][RLS] (RLS) and [rust-analyzer] &mdash; if developers are getting constant, real-time feedback in their IDE then it doesn't matter as much how long a full compile takes.
 
 [RLS]: https://github.com/rust-lang/rls
 [rust-analyzer]: https://github.com/rust-analyzer/rust-analyzer
 
-So it's important to keep in mind through this series that there is a spectrum of semi-tunable possibilities from "fast compile/slow run" to "fast run/slow compile", there are different scenarios that affect compile time in different ways, and in which compile time affects perception in different ways, and that there are psychological factors at play.
+So it's important to keep in mind through this series that there is a spectrum of tunable possibilities from "fast compile/slow run" to "fast run/slow compile", there are different scenarios that affect compile time in different ways, and in which compile time affects perception in different ways.
 
 It happens that for TiKV we've identified that the scenario we care most about with respect to compile time is "release profile / partial rebuilds". More about that in future installments.
+
+The rest of this post details some of the major designs in Rust that cause slow compile time. I describe them as "tradeoffs", as there are good reasons Rust is the way it is, and language design is full of awkward tradeoffs.
+
 
 ## Tradeoff #1: Monomorphized generics
 
 Rust's approach to generics is the most obvious language feature to blame on bad compile times, and understanding how Rust translates generic functions to machine code is important to understanding the Rust compile-time/run-time tradeoff.
 
-Generics generally are a complex topic, and Rust generics come in a number of forms that I'm not going to explore in-depth here. Rust has generic functions and generic types. For simplicity, we'll discuss generic functions only, but there are further compile-time considerations for generic types.
+Generics generally are a complex topic, and Rust generics come in a number of forms. Rust has generic functions and generic types, and they can be expressed in multiple ways. Here I'm mostly going to talk about how Rust calls generic functions, but there are further compile-time considerations for generic type translations. Other types of generics (like `impl Trait`), I ignore,as either they have similar compile-time impact, or I just don't know enough about them.
 
-As an example, consider the following `ToString` trait and the generic function `print`:
+As an example for this section, consider the following `ToString` trait and the generic function `print`:
 
 ```rust
 trait ToString {
@@ -100,7 +107,7 @@ Again, _in general_, for programming languages, there are two ways to translate 
 
 2) translate the generic function just once, calling each trait method through a function pointer (via a ["vtable"]).
 
-["vtable"]: todo
+["vtable"]: https://en.wikipedia.org/wiki/Virtual_method_table
 
 The first results in static method dispatch, the second in dynamic (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
 
@@ -398,6 +405,7 @@ More, smaller crates improve the _perception_ of compile time, if not the total 
 
 Rust crates don't have to be large, but there are a variety of factors that encourage them to be. The first is simply the relative complexity of adding new crates to a Rust project vs. adding a new module to a crate. New Rust projects tend to turn into monoliths unless given special attention to abstraction boundaries.
 
+
 ### Dependency graphs and unstirring spaghetti
 
 Within a crate, there are no fundamental restrictions on module interdependencies, though there are language features that allow some amount of information-hiding within a crate. The big advantage and risk of having modules coexist in the same crate is that they can be _mutual dependent_, two modules both depending on names exported from the other. Here's an example similar to many encountered in TiKV:
@@ -467,6 +475,7 @@ In my experience though projects tend to start in a single crate, without great 
 
 One the dependency spaghetti is stirred it's hard to unstir.
 
+
 ### Internal parallelism
 
 So Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate. So `rustc` itself is parallel over a single crate.
@@ -527,12 +536,12 @@ This results in large crates which increase partial rebuild time.
 Haskell's type classes, on which Rust's traits are based, does not have an orphan rule. At the time of Rust's design, this was thought to be problematic enough to correct.
 
 [or]: https://smallcultfollowing.com/babysteps/blog/2015/01/14/little-orphan-impls/
-[trait coherence]: todo
+[trait coherence]: https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence
 
 
-## Tradeoff #4: LLVM
+## Tradeoff #4: LLVM and poor LLVM IR generation
 
-This is pretty simple and understandable. `rustc` uses LLVM to generate code. LLVM can generate very fast code, but it comes at a cost. LLVM is a very big system. In fact, LLVM code makes up the majority of the Rust codebase. And it doesn't operate particularly fast.
+`rustc` uses LLVM to generate code. LLVM can generate very fast code, but it comes at a cost. LLVM is a very big system. In fact, LLVM code makes up the majority of the Rust codebase. And it doesn't operate particularly fast.
 
 So even when `rustc` is generating debug builds, that are supposed to build fast, but are allowed to run slow, generating the machine code still takes a considerable amount of time.
 
@@ -540,15 +549,12 @@ In a TiKV release build, LLVM passes occupy TODO% of the build time, while in a 
 
 LLVM being poor at generating slow code quickly is not in intrinsic property of the language though, and efforts are underway to create a second backend using [Cranelift], a code generator written in Rust, and designed for fast code generation.
 
-[Cranelift]: todo
+[Cranelift]: https://github.com/bytecodealliance/cranelift
 
 In addition to being integrated into `rustc` Cranelift is also being integrated into SpiderMonkey as its WebAssembly code generator.
 
 It's not fair to blame all the code generation slowness on LLVM though. `rustc` isn't doing LLVM any favors by
 the way it generates LLVM IR.
-
-
-## Tradeoff #5: Poor LLVM IR generation
 
 `rustc` is notorious for throwing huge gobs of unoptimized LLVM IR at LLVM and expecting it to optimize it all away. This is (probably) the main reason Rust debug binaries are so slow.
 
@@ -563,7 +569,7 @@ Remember earlier the discussion about how monomorphization works? How it duplica
 `rustc` is slowly being modified to such that it can perform its own optimizations on its own MIR (mid-level IR), and crucially, the MIR representation is pre-monomorphization. That means that MIR-level optimizations only need to be done once per generic function, and in turn produce smaller monomorphized LLVM IR, that LLVM can (in theory) translate faster than it does with its unoptimized functions today.
 
 
-## Tradeoff #6: Batch compilation
+## Tradeoff #5: Batch compilation
 
 It turns out that the entire architecture of `rustc` is "wrong", and so is the architecture of most compilers ever written.
 
@@ -592,15 +598,16 @@ There are though tradeoffs in the quality of machine code generated via incremen
 Niko spoke about this architecture in his ["Responsive compilers" talk at PLISS 2019][resp]. It is an entirely watchable talk about compiler engineering and I recommend checking it out.
 
 [resp]: https://www.youtube.com/watch?v=N6b44kMS6OM
-[RLS]: todo
+[RLS]: https://github.com/rust-lang/rls
 [Roselyn]: https://en.wikipedia.org/wiki/.NET_Compiler_Platform
-[lsp]: todo
+[lsp]: https://langserver.org/
 
 In that talk he also provided some examples of how the Rust language was accidentally designed poorly for responsive compilation, which I think is quite illustrative.
 
 TODO
 
-## Tradeoff #7: Build scripts and procedural macros
+
+## Tradeoff #6: Build scripts and procedural macros
 
 Cargo allows the build to be customized with two types of custom Rust programs: build scripts and procedural macros. The mechanism for each is different but they both similarly introduce arbitrary computation into the compilation process.
 
@@ -615,6 +622,27 @@ Third, procedural macros impede distributed build caching tools like [`sccache`]
 [`syn`]: https://crates.io/crates/syn
 [`sccache`]: https://github.com/mozilla/sccache
 
+
+## Tradeoff #7: Static linking
+
+This one is easy to overlook but has a huge impact. One of the things that people love most about Rust &mdash;
+that it produces a single static binary that is trivial to deploy, also requires the Rust compiler to do
+a great deal of working linking that binary together.
+
+Here's a small experiment compiling TiKV with a variety of link-time options. These are "partial rebuilds", where I built the entire project, then touched the `tikv` library, and rebuilt. These all use a single compilation unit per crate, without incremental compilation.
+
+<!--
+- dynamic, --opt-level=0: todo
+- dynamic, --opt-level=3: todo
+- static, --opt-level=0: todo
+- static, --opt-level=3: todo
+- static, --opt-level=0, thin LTO: todo
+- static, --opt-level=3, thin LTO: todo
+- static, --opt-level=0, full LTO: todo
+- static, --opt-level=3, full LTO: todo
+-->
+
+todo: graph
 
 
 ## All that stuff summarized
@@ -830,4 +858,24 @@ TODO:
 - Comment Link: https://news.ycombinator.com/item?id=22197082
 - Comment Link: https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/
 - Comment Link: https://lobste.rs/s/xup5lo/rust_compilation_model_calamity
+-->
+
+<!--
+
+ea0fd4d7688d1d462a94cfe4f7ab4d7cb0b30ab5
+
+cargo build --release
+
+real    20m19.025s
+user    64m22.746s
+sys     2m14.722s
+
+RUSTC_WRAPPER=sccache cargo build --release
+
+1968.13user 104.90system 25:00.42elapsed
+
+RUSTC_WRAPPER=sccache cargo build --release
+
+1974.02user 104.05system 19:20.63elapsed
+
 -->
