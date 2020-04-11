@@ -2,7 +2,7 @@
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
-The Rust programming language creates super-fast software, but compiles that software slowly.
+The Rust programming language compiles fast software slowly.
 
 In this series we explore Rust's compile times within the context of [TiKV], the key-value store
 behind the [TiDB] database.
@@ -38,14 +38,14 @@ In [the previous post in the series][prev] we covered Rust's early development h
 
 ## A brief aside about compile-time scenarios
 
-It's tempting to talk about "compile-time improvements" broadly, without any further clarification, but there are many types of "compile-time", some that matter more or less to different people. The four main compile-time scenarios are:
+It's tempting to talk about "compile-time" broadly, without any further clarification, but there are many types of "compile-time", some that matter more or less to different people. The four main compile-time scenarios in Rust are:
 
 - development profile / full rebuilds
 - development profile / partial rebuilds
 - release profile / full rebuilds
 - release profile / partial rebuilds
 
-The "development profile" entails compiler settings designed for fast compile times, slow run times, and maximum debuggability. The "release profile" entails compiler settings designed for fast run times, slow compile times, and, usually, minimum debuggability. In Rust, these are invoked with `cargo build` and `cargo build --release` respectively, and are the embodiment of the compile-time/run-time tradeoff.
+The "development profile" entails compiler settings designed for fast compile times, slow run times, and maximum debuggability. The "release profile" entails compiler settings designed for fast run times, slow compile times, and, usually, minimum debuggability. In Rust, these are invoked with `cargo build` and `cargo build --release` respectively, and are indicative of the compile-time/run-time tradeoff.
 
 A full rebuild is building the entire project from scratch, and a partial rebuild happens after modifying code in a previously built project. Partial rebuilds can notably benefit from [incremental compilation][ic].
 
@@ -76,32 +76,34 @@ The rest of this post details some of the major designs in Rust that cause slow 
 
 Rust's approach to generics is the most obvious language feature to blame on bad compile times, and understanding how Rust translates generic functions to machine code is important to understanding the Rust compile-time/run-time tradeoff.
 
-Generics generally are a complex topic, and Rust generics come in a number of forms. Rust has generic functions and generic types, and they can be expressed in multiple ways. Here I'm mostly going to talk about how Rust calls generic functions, but there are further compile-time considerations for generic type translations. Other types of generics (like `impl Trait`), I ignore,as either they have similar compile-time impact, or I just don't know enough about them.
+Generics generally are a complex topic, and Rust generics come in a number of forms. Rust has generic functions and generic types, and they can be expressed in multiple ways. Here I'm mostly going to talk about how Rust calls generic functions, but there are further compile-time considerations for generic type translations. I ignore other forms of generics (like `impl Trait`), as either they have similar compile-time impact, or I just don't know enough about them.
 
-As an example for this section, consider the following `ToString` trait and the generic function `print`:
+As a simple example for this section, consider the following `ToString` trait and the generic function `print`:
 
 ```rust
-trait ToString {
-    fn to_string(&self) -> String;
+trait Stringify {
+    fn stringify(&self) -> String;
 }
 
-fn print<T: ToString>(v: T) {
-     println!("{}", v.to_string());
+fn print<S: Stringify>(v: S) {
+     println!("hello {}", v.to_string());
 }
 ```
 
-This is not quite idiomatic Rust (you wouldn't use `ToString` like this), but close enough to be clear to a general audience: `print` will print to the console anything that can be converted to a `String` type. We say that "`print` is generic over type `T`, where `T` implements `ToString`". Thus I can call `print` with different types:
+`print` will print to the console anything that can be converted to a `String` type. We say that "`print` is generic over type `T`, where `T` implements `Stringify`". Thus I can call `print` with different types:
 
 ```rust
-print("hello, world");
-print(101);
+fn main() {
+    print(101);
+    print(false);
+}
 ```
 
 The way a compiler translates these calls to `print` to machine code has a huge impact on both the compile-time and run-time characterics of the language.
 
 When a generic function is called with a particular set of type parameters it is said to be _instantiated_ with those types.
 
-Again, _in general_, for programming languages, there are two ways to translate a generic function:
+In general, for programming languages, there are two ways to translate a generic function:
 
 1) translate the generic function for each set of instantiated type parameters, calling each trait method directly, but duplicating most of the generic function's machine instructions, or
 
@@ -109,37 +111,111 @@ Again, _in general_, for programming languages, there are two ways to translate 
 
 ["vtable"]: https://en.wikipedia.org/wiki/Virtual_method_table
 
-The first results in static method dispatch, the second in dynamic (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
+The first results in _static_ method dispatch, the second in _dynamic_ (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
 
-Again to make this concrete, imagine a hand-translation of both the static dispatch and dynamic dispatch strategies for our two `print` instantiations. These are just illustrative examples, and not what the compiler actually produces.
+To make this concrete, let's imagine a hand-translation of both the static dispatch and dynamic dispatch strategies for our two `print` instantiations. These are just illustrative examples, and not what the compiler actually produces.
 
 First, the static dispatch:
 
 ```rust
-fn print_str(v: &str) {
-    println!("{}", v.to_string());
+fn print_u32(v: &u32) {
+    println!("hello {}", v.stringify())
 }
 
-fn print_uint(v: u32) {
-    println!("{}", v.to_string());
+fn print_bool(v: &bool) {
+    println!("hello {}", v.stringify())
+}
+
+fn main() {
+    print_u32(&5);
+    print_bool(&false);
 }
 ```
 
-Then, the dynamic:
+Hey that's pretty easy to understand. Instead of a single `print` function, we
+now have two, `print_u32`, and `print_bool`. They both contain the call to the
+`println!` macro, and they call the `stringify` method directly.
+
+It's harder to illustrate the dynamic case, but I'll make an attempt.
+
+First, what a generic `print` dynamic function might look like
+under the hood:
+
 
 ```rust
-struct ToStringVTable {
-    to_string: unsafe fn(self: *const Opaque) -> String,
+use libc::c_void;
+
+unsafe fn print_dynamic(v: *const c_void, vtable: &StringifyVTable) {
+    println!("hello {}", (vtable.stringify)(v));
 }
 
-unsafe fn print(v: *const Opaque, vtable: &ToStringVTable) {
-    vtable.to_string(v);
+struct StringifyVTable {
+    stringify: unsafe fn(*const c_void) -> String,
 }
 ```
 
-In the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers in `ToStringVTable`, and only one `print` function. The second is ugly and can't be written safely &mdash; that's because `print` needs to pass an opaque pointer to the `self` argument` of the virtual method, which the method then unsafely casts to the correct type; when the compiler does this translation it always ensures that the type matches the vtable and the cast is safe to perform.
+We have to use unsafe pointers in the implementation of dynamic dispatch.
 
-To make things real, let's also look at what the Rust compiler actually emits for these two cases.
+This time the generic `print` function is translated to a single
+`print_dynamic`, and instead of taking one argument, it takes two: the
+first is an opaque pointer (`*const c_void`), and the second is a v-table
+containing a `stringify` function.
+
+The function in the v-table is responsible for casting the opaque pointer to the
+correct type, and the compiler guarantees it is the right type.
+
+The important thing to note here is that the call to the `println!` macro only
+need be made once, and it is shared between all implementations.
+
+Now, for the rest of the dynamic v-table example:
+
+```rust
+use std::mem::transmute;
+
+fn main_dynamic() {
+    unsafe {
+        print_dynamic(transmute(&5_u32), &STRINGIFY_U32_VTABLE);
+        print_dynamic(transmute(&false), &STRINGIFY_BOOL_VTABLE);
+    }
+}
+
+const STRINGIFY_U32_VTABLE: StringifyVTable = StringifyVTable {
+    stringify: stringify_fn_u32,
+};
+
+unsafe fn stringify_fn_u32(v: *const c_void) -> String {
+    let v: &u32 = transmute(v);
+    v.stringify()
+}
+
+const STRINGIFY_BOOL_VTABLE: StringifyVTable = StringifyVTable {
+    stringify: stringify_fn_bool,
+};
+
+unsafe fn stringify_fn_bool(v: *const c_void) -> String {
+    let v: &bool = transmute(v);
+    v.stringify()
+}
+```
+
+Yeah, it's ugly. This is unsafely casting references to opaque pointers,
+constructing v-tables, and pairing the two in calls to `print_dynamic`.
+
+(`transmute` here is an unsafe type-casting function. In real code you would not
+use it for this purpose, but it makes the example more readable).
+
+Ok, that was all uglier than I wish it were. I hope it was understandable and
+got the point across: in the first (static) case, there are two `print`
+functions and no calls through function pointers; in the second (dynamic) there
+is only one `print` function, plus a layer of indirection through function
+pointers in `StringifyVTable`.
+
+[Here's a Rust playground link][spg] to the full code for these two examples if
+you want to play with them.
+
+[spg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=57503afa988a02c749dddffa15b84f74
+
+Now let's look at what the Rust compiler actually emits for similar cases.
 
 First, a real Rust static dispatch test case ([playground link][pl1]):
 
@@ -154,8 +230,8 @@ fn print<T: ToString>(v: T) {
 }
 
 fn main() {
-  print("hello, world");
-  print(101);
+    print("hello, world");
+    print(101);
 }
 ```
 
@@ -172,113 +248,31 @@ fn print(v: &dyn ToString) {
 }
 
 fn main() {
-  print(&"hello, world");
-  print(&101);
+    print(&"hello, world");
+    print(&101);
 }
 ```
+
+(In these examples we have to use `inline(never)` to defeat the compiler
+optimizer. Without this it would turn these simple examples into the exact same
+machine code. I'll explore this further in the next episode of this series.)
 
 A selection of the assembly for the static case:
 
 ```
 _ZN10playground5print17ha0649f845bb59b0cE:
-	pushq	%r15
-	pushq	%r14
-	pushq	%r12
-	pushq	%rbx
-	subq	$120, %rsp
-	movl	$101, 28(%rsp)
-	leaq	28(%rsp), %rax
-	movq	%rax, 104(%rsp)
-	movq	$1, (%rsp)
-	xorps	%xmm0, %xmm0
-	movups	%xmm0, 8(%rsp)
-	leaq	104(%rsp), %rax
-	movq	%rax, 32(%rsp)
+    ...
 	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17hf85bec40266d54a0E(%rip), %rax
-	movq	%rax, 40(%rsp)
-	movq	%rsp, %r15
-	movq	%r15, 112(%rsp)
-	leaq	.L__unnamed_3(%rip), %rax
-	movq	%rax, 56(%rsp)
-	movq	$1, 64(%rsp)
-	movq	$0, 72(%rsp)
-	leaq	32(%rsp), %r12
-	movq	%r12, 88(%rsp)
-	movq	$1, 96(%rsp)
-	leaq	.L__unnamed_2(%rip), %rsi
-	leaq	112(%rsp), %rdi
-	leaq	56(%rsp), %rdx
+    ...
 	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
-	testb	%al, %al
-	jne	.LBB12_2
-	movq	8(%rsp), %rsi
-	movq	16(%rsp), %rbx
-	cmpq	%rbx, %rsi
-	je	.LBB12_18
-	jb	.LBB12_9
-	testq	%rbx, %rbx
-	je	.LBB12_7
-	movq	(%rsp), %rdi
-	movl	$1, %edx
-	movq	%rbx, %rcx
-	callq	*__rust_realloc@GOTPCREL(%rip)
-	testq	%rax, %rax
-	je	.LBB12_12
-	movq	%rax, %r14
-	jmp	.LBB12_17
-
-<... more asm omitted ...>
+    ...
 
 _ZN10playground5print17hffa7359fe88f0de2E:
-	pushq	%r15
-	pushq	%r14
-	pushq	%r12
-	pushq	%rbx
-	subq	$136, %rsp
-	leaq	.L__unnamed_8(%rip), %rax
-	movq	%rax, 120(%rsp)
-	movq	$12, 128(%rsp)
-	leaq	120(%rsp), %rax
-	movq	%rax, 104(%rsp)
-	movq	$1, 8(%rsp)
-	xorps	%xmm0, %xmm0
-	movups	%xmm0, 16(%rsp)
-	leaq	104(%rsp), %rax
-	movq	%rax, 32(%rsp)
+    ...
 	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17h09f612f58a92f16cE(%rip), %rax
-	movq	%rax, 40(%rsp)
-	leaq	8(%rsp), %r15
-	movq	%r15, 112(%rsp)
-	leaq	.L__unnamed_3(%rip), %rax
-	movq	%rax, 56(%rsp)
-	movq	$1, 64(%rsp)
-	movq	$0, 72(%rsp)
-	leaq	32(%rsp), %r12
-	movq	%r12, 88(%rsp)
-	movq	$1, 96(%rsp)
-	leaq	.L__unnamed_2(%rip), %rsi
-	leaq	112(%rsp), %rdi
-	leaq	56(%rsp), %rdx
+    ...
 	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
-	testb	%al, %al
-	jne	.LBB13_2
-	movq	16(%rsp), %rsi
-	movq	24(%rsp), %rbx
-	cmpq	%rbx, %rsi
-	je	.LBB13_18
-	jb	.LBB13_9
-	testq	%rbx, %rbx
-	je	.LBB13_7
-	movq	8(%rsp), %rdi
-	movl	$1, %edx
-	movq	%rbx, %rcx
-	callq	*__rust_realloc@GOTPCREL(%rip)
-	testq	%rax, %rax
-	je	.LBB13_12
-	movq	%rax, %r14
-	jmp	.LBB13_17
-
-<... more asm omitted ...>
+    ...
 
 _ZN10playground4main17h6b41e7a408fe6876E:
 	pushq	%rax
@@ -291,33 +285,11 @@ And the dynamic case:
 
 ```
 _ZN10playground5print17h796a2cdf500a8987E:
-	pushq	%rbx
-	subq	$96, %rsp
-	movq	%rsi, %rax
-	movq	%rdi, %rsi
-	leaq	24(%rsp), %rbx
-	movq	%rbx, %rdi
-	callq	*24(%rax)
-	movq	%rbx, 8(%rsp)
+    ...
 	leaq	_ZN60_$LT$alloc..string..String$u20$as$u20$core..fmt..Display$GT$3fmt17h6d6512069e6d4207E(%rip), %rax
-	movq	%rax, 16(%rsp)
-	leaq	.L__unnamed_7(%rip), %rax
-	movq	%rax, 48(%rsp)
-	movq	$2, 56(%rsp)
-	movq	$0, 64(%rsp)
-	leaq	8(%rsp), %rax
-	movq	%rax, 80(%rsp)
-	movq	$1, 88(%rsp)
-	leaq	48(%rsp), %rdi
+    ...
 	callq	*_ZN3std2io5stdio6_print17heec45c591c88165dE@GOTPCREL(%rip)
-	movq	32(%rsp), %rsi
-	testq	%rsi, %rsi
-	je	.LBB16_3
-	movq	24(%rsp), %rdi
-	movl	$1, %edx
-	callq	*__rust_dealloc@GOTPCREL(%rip)
-
-<... more asm omitted ...>
+    ...
 
 _ZN10playground4main17h6b41e7a408fe6876E:
 	pushq	%rax
@@ -330,19 +302,21 @@ _ZN10playground4main17h6b41e7a408fe6876E:
 	jmp	_ZN10playground5print17h796a2cdf500a8987E
 ```
 
-OK, sure enough, we can see the same pattern: in the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers, and only one `print` function.
+This omits most everything, but you can generate the full assembly yourself on the playground by clicking `... -> ASM`.
 
-These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
+Here we see the same pattern: in the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers, and only one `print` function.
 
-It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so once a function pointer has been used once it is likely to be called quickly the next time; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which puts great pressure on the CPU's instruction cache.
+These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes less work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
 
-C++ and Rust both strongly encourage monomorphization, both generate some of the fastest machine code of any programming language, and both have problems with code bloat. This seems to be evidence that the monomorphization strategy is indeed the faster of the two. There is though a curious counter-example: C. C has no generics at all, and C programs are often both the slimmest _and_ fastest in their class. Reproducing the monomorphization strategy in C requires using the ungainly C macro preprocessor, and modern object-orientation patterns in C are often vtable-based.
+It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so if a function pointer has been called recently it will likely be predicted correctly the next time and called quickly; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which could put great pressure on the CPU's instruction cache.
+
+C++ and Rust both strongly encourage monomorphization, both generate some of the fastest machine code of any programming language, and both have problems with code bloat. This seems to be evidence that the monomorphization strategy is indeed the faster of the two. There is though a curious counter-example: C. C has no generics at all, and C programs are often both the slimmest _and_ fastest in their class. Reproducing the monomorphization strategy in C requires using ugly C macro preprocessor techniques, and modern object-orientation patterns in C are often vtable-based.
 
 _Takeaway: it is a broadly thought by compiler engineers that monomorphiation results in somewhat faster generic code while taking somewhat longer to compile._
 
 Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times somewhat (I can't find a citation for the exact number right now).
 
-All that is only touching on the surface of the tradeoffs between static and dynamic dispatch. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
+All that is only touching on the surface of the tradeoffs involved in monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
 
 > niko: so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
 
@@ -392,8 +366,6 @@ All that is only touching on the surface of the tradeoffs between static and dyn
 
 [Niko]: https://github.com/nikomatsakis
 
-_Takeaway: monomorphized are easier to implement and faster, but have greater compile-time cost._
-
 
 ## Tradeoff #2: Huge compilation units
 
@@ -401,7 +373,7 @@ A _compilation unit_ is the basic unit of work that a language's compiler operat
 
 The size of compilation units incur a number of tradeoffs. Larger compilation units take longer to analyze, translate, and optimize than smaller crates. And in general, when a change is made to a single compilation unit, the whole compilation unit must be recompiled.
 
-More, smaller crates improve the _perception_ of compile time, if not the total compile time, because a single change may force less of the project to be recompiled. This is a benefit to the "partial recompilation" use cases. A project with more crates though may do more work on a full recompile due to a variety of factors, which I will summarize at the end of this section.
+More, smaller crates improve the _perception_ of compile time, if not the total compile time, because a single change may force less of the project to be recompiled. This benefits the "partial recompilation" use cases. A project with more crates though may do more work on a full recompile due to a variety of factors, which I will summarize at the end of this section.
 
 Rust crates don't have to be large, but there are a variety of factors that encourage them to be. The first is simply the relative complexity of adding new crates to a Rust project vs. adding a new module to a crate. New Rust projects tend to turn into monoliths unless given special attention to abstraction boundaries.
 
@@ -440,7 +412,7 @@ mod network {
 }
 ```
 
-Mutual dependencies are useful for reducing cognitive compleity by breaking up code, but as an abstraction boundary they are deceptive: they cannot be trivially reduced further into separate crates.
+Modules with mutual dependencies are useful for reducing cognitive complexity simply because they break up code into smaller units. As an abstraction boundary though they are deceptive: they are not truly independent, and cannot be trivially reduced further into separate crates.
 
 And that is because _dependencies between crates must form a directed acyclic graph (a DAG)_; they do not support mutual dependencies.
 
@@ -465,22 +437,22 @@ and enables phases that need to traverse a complete definition, like typecheckin
 
 > graydon: I'm not sure which if any of these was the dominant concern. If I had to guess I'd say avoiding problems with separate compilation of recursive definitions and managing code versioning. recall the language in the manual / the rationale for crates: "units of compilation and versioning". Those were the consideration for their existence as separate from modules. Modules get to be recursive. Crates, no. Because of things to do with "compilation and versioning".
 
-Although driven by fundamental design constraints, the hard daggishness of crates should be considered a feature: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
+Although driven by fundamental constraints, the hard daggishness of crates is useful for a number of reasons: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
 
-Note the emphasis on _parallelism_. The crate DAG is the simplest source of compile-time parallelism we have access to. Cargo today will use the DAG to automatically divide work into parallel compilation jobs.
+Note the emphasis on _parallelism_. The crate DAG is the simplest source of compile-time parallelism Rust has access to. Cargo today will use the DAG to automatically divide work into parallel compilation jobs.
 
 So it's quite desirable for Rust code to be broken into crates that form a _wide_ DAG.
 
-In my experience though projects tend to start in a single crate, without great attention to their internal dependency graph, and once compilation time becomes an issue, they have already created a dependency spaghetti dependency graph that is difficult to refactor into smaller crates. This has been my experience on TiKV, where I have made multiple aborted attempts to extract various modules from the main program, in long sequences of commits that untangle internal dependencies.
+In my experience though projects tend to start in a single crate, without great attention to their internal dependency graph, and once compilation time becomes an issue, they have already created a spaghetti dependency graph that is difficult to refactor into smaller crates. This has been my experience on TiKV, where I have made multiple aborted attempts to extract various modules from the main program, in long sequences of commits that untangle internal dependencies.
 
 One the dependency spaghetti is stirred it's hard to unstir.
 
 
 ### Internal parallelism
 
-So Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate. So `rustc` itself is parallel over a single crate.
+So Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate.
 
-It wasn't designed to be parallel though, so its parallelism is limited and hard-won.
+So in addition to `cargo`s parallel crate compilation, `rustc` itself is parallel over a single crate. It wasn't designed to be parallel though, so its parallelism is limited and hard-won.
 
 Today the only real internal parallelism in `rustc` is the use of [_codegen units_], by which `rustc` automatically divides a crate into multiple LLVM modules during translation. By doing this it can perform code generation in parallel.
 
@@ -508,20 +480,20 @@ The number of factors affected by compilation unit size is large, and I've given
 
 - Generic duplication &mdash; generics are translated in the crate which instantiates them, so more crates that use the same generics means more translation time.
 
-- Link-time optimization (LTO) &mdash; release builds tend to have a final "link-time optimization" step that 
+- Link-time optimization (LTO) &mdash; release builds tend to have a final "link-time optimization" step that performs optimizations across multiple code units, and it is extremely expensive.
 
-- Saving and restoring metadata &mdash; Rust needs to save and load metadata about each crate and each dependency, so more crates means more redundant loading.
+- Saving and restoring metadata &mdash; Rust needs to save and load metadata about each crate and each dependency, each time it is run, so more crates means more redundant loading.
 
 - Parallel "codegen units" &mdash; `rustc` can automatically split its LLVM IR into multiple compilation units, called "codegen units". The degree to which it is effective at this depends a lot on how a crate's internal dependencies are organized and the compilers ability to understand them. This can result in faster partial recompilation, at the expense of optimization, since inlining opportunities are lost.
 
-- Compiler-internal parallelism &mdash; Parts of `rustc` itself are p
+- Compiler-internal parallelism &mdash; Parts of `rustc` itself are parallel. That internal parallelism has its own unpredictable bottlenecks and unpredictable interactions with external build-system parallelism.
 
 Unfortunately, because of all these variables, it's not at all obvious for any given project what the impact of refactoring into smaller crates is going to be. Anticipated wins due to increased parallelism are often erased by other factors such as downstream monomorphization, generic duplication, and LTO.
 
 
 ## Tradeoff #3: Trait coherence and the orphan rule
 
-Rust's trait system makes it difficult to make crates into abstraction boundaries because of a thing call the _orphan rule_.
+Rust's trait system makes it difficult to use crates as abstraction boundaries because of a thing call the _orphan rule_.
 
 Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
 
@@ -533,7 +505,9 @@ In practice, this creates quite a tight coupling between abstractions in Rust, d
 
 This results in large crates which increase partial rebuild time.
 
-Haskell's type classes, on which Rust's traits are based, does not have an orphan rule. At the time of Rust's design, this was thought to be problematic enough to correct.
+There's subject deserves more examples and consideration, but I haven't the time for it now.
+
+Haskell's type classes, on which Rust's traits are based, do not have an orphan rule. At the time of Rust's design, this was thought to be problematic enough to correct.
 
 [or]: https://smallcultfollowing.com/babysteps/blog/2015/01/14/little-orphan-impls/
 [trait coherence]: https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence
@@ -545,9 +519,11 @@ Haskell's type classes, on which Rust's traits are based, does not have an orpha
 
 So even when `rustc` is generating debug builds, that are supposed to build fast, but are allowed to run slow, generating the machine code still takes a considerable amount of time.
 
-In a TiKV release build, LLVM passes occupy TODO% of the build time, while in a debug build LLVM passes occupy TODO% of the build time.
+In a TiKV release build, LLVM passes occupy 84% of the build time, while in a debug build LLVM passes occupy 35% of the build time ([full details gist][tpg]).
 
-LLVM being poor at generating slow code quickly is not in intrinsic property of the language though, and efforts are underway to create a second backend using [Cranelift], a code generator written in Rust, and designed for fast code generation.
+[tpg]: https://gist.github.com/brson/ba22165d6da4a976b278b0896db7e4e4
+
+LLVM being poor at quickly generating code (even if the resulting code is slow) is not in intrinsic property of the language though, and efforts are underway to create a second backend using [Cranelift], a code generator written in Rust, and designed for fast code generation.
 
 [Cranelift]: https://github.com/bytecodealliance/cranelift
 
@@ -556,7 +532,7 @@ In addition to being integrated into `rustc` Cranelift is also being integrated 
 It's not fair to blame all the code generation slowness on LLVM though. `rustc` isn't doing LLVM any favors by
 the way it generates LLVM IR.
 
-`rustc` is notorious for throwing huge gobs of unoptimized LLVM IR at LLVM and expecting it to optimize it all away. This is (probably) the main reason Rust debug binaries are so slow.
+`rustc` is notorious for throwing huge gobs of unoptimized LLVM IR at LLVM and expecting LLVM to optimize it all away. This is (probably) the main reason Rust debug binaries are so slow.
 
 So LLVM is doing a lot of work to make Rust as fast as it is.
 
@@ -575,15 +551,15 @@ It turns out that the entire architecture of `rustc` is "wrong", and so is the a
 
 It is common wisdom that all compilers have an architecture like the following:
 
-- the compiler consumes an entire compilation by parsing all of its source code into an AST
-- through a succession of passes, that AST is refined into increasingly detailed data "intermediate representations" (IRs)
+- the compiler consumes an entire compilation unit by parsing all of its source code into an AST
+- through a succession of passes, that AST is refined into increasingly detailed "intermediate representations" (IRs)
 - the entire final IR is passed through a code generator to emit machine code
 
-I am calling this the "batch compilation" model. Maybe that's what others call it. This architecture is vaguelly how compilers have been described academically for decades; it is how most compilers have historically been implemented; and that is how `rustc` was originally architected. But it is not an architecture that well-supports the workflows of modern developers and their IDEs, nor does it support fast recompilation.
+I am calling this the "batch compilation" model. I don't know what others call it. This architecture is vaguelly how compilers have been described academically for decades; it is how most compilers have historically been implemented; and that is how `rustc` was originally architected. But it is not an architecture that well-supports the workflows of modern developers and their tooling, nor does it support fast recompilation.
 
 Today, developers expect instant feedback about the code they are hacking. When they write a type error, the IDE should immediately put a red squiggle under their code and tell them about it. It should ideally do this even if the source code doesn't completely parse.
 
-The batch compilation model is poorly suited for this. It requires that entire compilation units be re-analyzed for every incremental change to the source code, in order to produce incremental changes to the analysis. In the last decade or so, the thinking among compiler engineers about how to construct compilers has been shifting from batch compilation to "responsive compilation", by which the compiler can run the entire compilation pipeline on the smallest subset of code possible to get a particular answer desired, as quickly as possible. For example, with responsive compilation one can ask "does this function type check?", or "what are the type dependencies of this structure?".
+The batch compilation model is poorly suited for this. It requires that entire compilation units be re-analyzed for every incremental change to the source code, in order to produce incremental changes to the analysis. In the last decade or so, the thinking among compiler engineers about how to construct compilers has been shifting from batch compilation to "responsive compilation", by which the compiler can run the entire compilation pipeline on the smallest subset of code possible to answer a particular question, as quickly as possible. For example, with responsive compilation one can ask "does this function type check?", or "what are the type dependencies of this structure?".
 
 This ability lends itself to the _perception_ of compiler speed, since the user is constantly getting necessary feedback while they work. It can dramatically shorten the feedback cycle for correcting type checking errors, and in Rust, getting the program to successfully type check takes up a huge proportion of developers' time.
 
@@ -591,20 +567,22 @@ I'm sure the prior art is extensive, but a notable modern responsive compiler is
 
 In Rust today we support this IDE use case with the [Rust Language Server][RLS] (the RLS). But many Rust developers will know that the RLS experience can be pretty disappointing, with huge latency between typing and getting feedback. Sometimes the RLS fails to find the expected results, or simply fails compeletely. The failures of the RLS are almost entirely due to being built on top of a batch-model compiler, and not a responsive compiler.
 
+The RLS is gradually being supplanted by [`rust-analyzer`], which amounts to essentially a ground-up rewrite of `rustc`, at least through its analysis phases, to support responsive compilation. It's expected that over time [`rust-analyzer` and `rustc` will share increasing amounts of code][libraryification].
+
+[`rust-analyzer`]: https://github.com/rust-analyzer/rust-analyzer
+[libraryification]: http://smallcultfollowing.com/babysteps/blog/2020/04/09/libraryification/
+
 Taken to the limit, a responsive compiler architecture naturally lends itself to quickly responding to requests like "regenerate machine code, but only for functions that are changed since the last time the compiler was run". So not only does responsive compilation support the IDE analysis use case, but also the recompile-to-machine-code use case. Today, this second use case is supported in `rustc` with "incremental compilation", but it is fairly crude, with a great deal of duplicated work on every compiler invocation. We should expect that, as `rustc` becomes more responsive, incremental compilation will ultimately do the minimal work possible to recompile only what must be recompiled.
 
 There are though tradeoffs in the quality of machine code generated via incremental compilation &mdash; due to the mysterious challenges of inlining, incrementally-recompiled code is unlikely to ever be as fast as highly-optimized, batch-compiled machine code. In other words, you probably won't ever want to use incremental compilation for your production releases, but it can drastically speed up the development experience, while producing relatively fast code.
 
-Niko spoke about this architecture in his ["Responsive compilers" talk at PLISS 2019][resp]. It is an entirely watchable talk about compiler engineering and I recommend checking it out.
+Niko spoke about this architecture in his ["Responsive compilers" talk at PLISS 2019][resp]. In that talk he also provided some examples of how the Rust language was accidentally mis-designed for responsive compilation. It is an entirely watchable talk about compiler engineering and I recommend checking it out. 
 
 [resp]: https://www.youtube.com/watch?v=N6b44kMS6OM
 [RLS]: https://github.com/rust-lang/rls
 [Roselyn]: https://en.wikipedia.org/wiki/.NET_Compiler_Platform
 [lsp]: https://langserver.org/
 
-In that talk he also provided some examples of how the Rust language was accidentally designed poorly for responsive compilation, which I think is quite illustrative.
-
-TODO
 
 
 ## Tradeoff #6: Build scripts and procedural macros
@@ -617,7 +595,7 @@ First, these types of programs have their own crate ecosystem that also needs to
 
 Second, these tools are often used for code generation, and their invocation expands to sometimes large amounts of code.
 
-Third, procedural macros impede distributed build caching tools like [`sccache`]. The reason why is unexpected though &mdash; rustc today loads procedural macros as dynamic libraries, one of the few common uses of dynamic libraries in the Rust ecosystem. `sccache` isn't able to cache dynamic library artifacts because it doesn't have visibility into how the linker was invoked to create the dynamic library. So using a scache to build a project that heavily relies on procedural macros will often not speed up the build.
+Third, procedural macros impede distributed build caching tools like [`sccache`]. The reason why is unexpected though &mdash; rustc today loads procedural macros as dynamic libraries, one of the few common uses of dynamic libraries in the Rust ecosystem. `sccache` isn't able to cache dynamic library artifacts because it doesn't have visibility into how the linker was invoked to create the dynamic library. So using sccache to build a project that heavily relies on procedural macros will often not speed up the build.
 
 [`syn`]: https://crates.io/crates/syn
 [`sccache`]: https://github.com/mozilla/sccache
@@ -625,27 +603,29 @@ Third, procedural macros impede distributed build caching tools like [`sccache`]
 
 ## Tradeoff #7: Static linking
 
-This one is easy to overlook but has a huge impact. One of the things that people love most about Rust &mdash;
-that it produces a single static binary that is trivial to deploy, also requires the Rust compiler to do
-a great deal of working linking that binary together.
+This one is easy to overlook but has potentially significant impact on the
+hack-test cycle. One of the things that people love most about Rust &mdash; that
+it produces a single static binary that is trivial to deploy, also requires the
+Rust compiler to do a great deal of working linking that binary together.
 
-Here's a small experiment compiling TiKV with a variety of link-time options. These are "partial rebuilds", where I built the entire project, then touched the `tikv` library, and rebuilt. These all use a single compilation unit per crate, without incremental compilation.
+Every time you build an executable `rustc` needs to run the linker. That
+includes every time you rebuild to run a test. In the same experiment I did to
+calculate the amount of build time spent in LLVM, Rust spent 11% of debug build
+time in the linker. Surprisingly, in release mode it spent less than 1% of time
+linking, excluding LTO.
 
-<!--
-- dynamic, --opt-level=0: todo
-- dynamic, --opt-level=3: todo
-- static, --opt-level=0: todo
-- static, --opt-level=3: todo
-- static, --opt-level=0, thin LTO: todo
-- static, --opt-level=3, thin LTO: todo
-- static, --opt-level=0, full LTO: todo
-- static, --opt-level=3, full LTO: todo
--->
-
-todo: graph
+With dynamic linking the cost of linking is deferred until runtime, and parts
+of the linking process can be done lazily, or not at all, as functions are
+actually called.
 
 
 ## All that stuff summarized
+
+There are a great many factors involved in determining the compile-time of a
+compiler, and the resulting run-time performance of its output. It is a miracle
+that optimizing compilers ever terminate at all, and that their resulting code
+is so amazingly fast. For humans, predicting how to organize their code to
+find the right balance of compile time and run time is pretty much impossible.
 
 
 ## In the next episode of Rust Compile-time Adventures with TiKV
@@ -878,4 +858,4 @@ RUSTC_WRAPPER=sccache cargo build --release
 
 1974.02user 104.05system 19:20.63elapsed
 
--->
+-->>
