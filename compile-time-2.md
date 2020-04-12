@@ -1,4 +1,4 @@
-# What makes Rust compile time slow?
+# What makes Rust compile times slow?
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
@@ -44,25 +44,24 @@ In [the previous post in the series][prev] we covered Rust's early development h
 ## Comments on the last episode
 
 After the [previous][prev] episode of this series, people made a lot of great comments on
+[HackerNews], [Reddit], and [Lobste.rs].
 
-- [HackerNews](https://news.ycombinator.com/item?id=22197082)
-- [Reddit](https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/)
-- [Lobste.rs](https://lobste.rs/s/xup5lo/rust_compilation_model_calamity)
+[HackerNews]: https://news.ycombinator.com/item?id=22197082
+[Reddit]: https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/
+[Lobste.rs]: https://lobste.rs/s/xup5lo/rust_compilation_model_calamity
 
 Some common comments:
 
 - The compile times we see for TiKV aren't so terrible, and are comparable to
-  C++. I agree.
+  C++.
 - What often matters is partial rebuilds since that is what developers
-  experience most in their build-test cycle. I agree with this too, and
-  unfortunately it's a bad case for Rust since so much work is tail-loaded
-  (monomorphization, linking, LTO).
+  experience most in their build-test cycle.
 
 Some subjects I hadn't considered:
 
 - [WalterBright pointed out][wb] that data flow analysis (DFA) is expensive
-  (quadratic). Rust depends on data flow analysis. I have never personally heard
-  of how this impacts Rust compile times, but it's good to be aware of.
+  (quadratic). Rust depends on data flow analysis. I don't know how this
+  impacts Rust compile times, but it's good to be aware of.
 - [kibwen reminded us][kb] that faster linkers have an impact on build times,
   and that LLD may be faster than the system linker eventually.
 
