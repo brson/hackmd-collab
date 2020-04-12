@@ -20,8 +20,13 @@ In [the previous post in the series][prev] we covered Rust's early development h
 [prev]: https://pingcap.com/blog/rust-compilation-model-calamity/
 
 
+- [Comments on the last episode](#user-content-comments-on-the-last-episode)
 - [A brief aside about compile-time scenarios](#user-content-a-brief-aside-about-compile-time-scenarios)
 - [Tradeoff #1: Monomorphized generics](#user-content-tradeoff-1-monomorphized-generics)
+  - [A handwritten example](#user-content-a-handwritten-example)
+  - [An example from the Rust compiler](#user-content-an-example-from-the-rust-compiler)
+  - [More about the tradeoff](#user-content-more-about-the-tradeoff)
+  - [Nuanced commentary from Niko](#user-content-nuanced-commentary-from-niko)
 - [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
   - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
   - [Internal parallelism](#user-content-internal-parallelism)
@@ -30,10 +35,44 @@ In [the previous post in the series][prev] we covered Rust's early development h
 - [Tradeoff #4: LLVM and poor LLVM IR generation](#user-content-tradeoff-4-llvm-and-poor-llvm-ir-generation)
 - [Tradeoff #5: Batch compilation](#user-content-tradeoff-5-batch-compilation)
 - [Tradeoff #6: Build scripts and procedural macros](#user-content-tradeoff-6-build-scripts-and-procedural-macros)
-- [Tradeoff #7: Static linking (#user-content-tradeoff-7-static-linking)
+- [Tradeoff #7: Static linking](#user-content-tradeoff-7-static-linking)
 - [All that stuff summarized](#user-content-all-that-stuff-summarized)
 - [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
 - [Thanks](#user-content-thanks)
+
+
+## Comments on the last episode
+
+After the [previous][prev] episode of this series, people made a lot of great comments on
+
+- [HackerNews](https://news.ycombinator.com/item?id=22197082)
+- [Reddit](https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/)
+- [Lobste.rs](https://lobste.rs/s/xup5lo/rust_compilation_model_calamity)
+
+Some common comments:
+
+- The compile times we see for TiKV aren't so terrible, and are comparable to
+  C++. I agree.
+- What often matters is partial rebuilds since that is what developers
+  experience most in their build-test cycle. I agree with this too, and
+  unfortunately it's a bad case for Rust since so much work is tail-loaded
+  (monomorphization, linking, LTO).
+
+Some subjects I hadn't considered:
+
+- [WalterBright pointed out][wb] that data flow analysis (DFA) is expensive
+  (quadratic). Rust depends on data flow analysis. I have never personally heard
+  of how this impacts Rust compile times, but it's good to be aware of.
+- [kibwen reminded us][kb] that faster linkers have an impact on build times,
+  and that LLD may be faster than the system linker eventually.
+
+[wb]: https://news.ycombinator.com/item?id=22199471
+[kb]: https://www.reddit.com/r/rust/comments/ew5wnz/the_rust_compilation_model_calamity/fg07hvv/
+
+
+
+
+
 
 
 ## A brief aside about compile-time scenarios
@@ -112,6 +151,9 @@ In general, for programming languages, there are two ways to translate a generic
 ["vtable"]: https://en.wikipedia.org/wiki/Virtual_method_table
 
 The first results in _static_ method dispatch, the second in _dynamic_ (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
+
+
+### A hand-written example
 
 To make this concrete, let's imagine a hand-translation of both the static dispatch and dynamic dispatch strategies for our two `print` instantiations. These are just illustrative examples, and not what the compiler actually produces.
 
@@ -215,6 +257,9 @@ you want to play with them.
 
 [spg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=57503afa988a02c749dddffa15b84f74
 
+
+### An example from the Rust compiler
+
 Now let's look at what the Rust compiler actually emits for similar cases.
 
 First, a real Rust static dispatch test case ([playground link][pl1]):
@@ -306,15 +351,34 @@ This omits most everything, but you can generate the full assembly yourself on t
 
 Here we see the same pattern: in the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers, and only one `print` function.
 
+
+### More about the tradeoff
+
 These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes less work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
 
-It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though a couple of factors that make this intuition suspect: first, modern CPUs have invested a lot of silicon into branch prediction, so if a function pointer has been called recently it will likely be predicted correctly the next time and called quickly; second, monomorphization results in huge quantities of machine instructions, a phenomenon commonly referred to as "code bloat", which could put great pressure on the CPU's instruction cache.
+It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though factors that make this intuition suspect:
+
+- first, modern CPUs have invested a lot of silicon into branch prediction, so
+  if a function pointer has been called recently it will likely be predicted
+  correctly the next time and called quickly;
+- second, monomorphization results in huge quantities of machine instructions, a
+  phenomenon commonly referred to as "code bloat", which could put great
+  pressure on the CPU's instruction cache;
+- third, the LLVM optimizer is surprisingly smart, and with enough visibility
+  into the code can sometimes turn virtual calls into static calls.
 
 C++ and Rust both strongly encourage monomorphization, both generate some of the fastest machine code of any programming language, and both have problems with code bloat. This seems to be evidence that the monomorphization strategy is indeed the faster of the two. There is though a curious counter-example: C. C has no generics at all, and C programs are often both the slimmest _and_ fastest in their class. Reproducing the monomorphization strategy in C requires using ugly C macro preprocessor techniques, and modern object-orientation patterns in C are often vtable-based.
 
 _Takeaway: it is a broadly thought by compiler engineers that monomorphiation results in somewhat faster generic code while taking somewhat longer to compile._
 
-Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. It is thought that eliminating this duplication could reduce compile times somewhat (I can't find a citation for the exact number right now).
+Note that the monomorphization-compile-time problem is compounded in Rust because Rust translates generic functions in every crate (generally, "compilation unit") that instantiates them. That means that if, given our `print` example, crate `a` calls `print("hello, world")`, and crate `b` also calls `print("hello, world, or whatever")`, then both crate `a` and `b` will contain the monomorphized `print_str` function &mdash; the compiler does all the type-checking and translation work twice. This is partially mitigated today at lower optimization levels by [shared generics], though there are still duplicated generics [in sibling dependencies][sib],
+and at higher optimization levels
+
+[shared generics]: https://github.com/rust-lang/rust/issues/47317#issuecomment-478894318
+[sib]: https://github.com/rust-lang/rust/pull/48779
+
+
+### Nuanced commentary from Niko
 
 All that is only touching on the surface of the tradeoffs involved in monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
 
@@ -443,9 +507,9 @@ Note the emphasis on _parallelism_. The crate DAG is the simplest source of comp
 
 So it's quite desirable for Rust code to be broken into crates that form a _wide_ DAG.
 
-In my experience though projects tend to start in a single crate, without great attention to their internal dependency graph, and once compilation time becomes an issue, they have already created a spaghetti dependency graph that is difficult to refactor into smaller crates. This has been my experience on TiKV, where I have made multiple aborted attempts to extract various modules from the main program, in long sequences of commits that untangle internal dependencies.
-
-One the dependency spaghetti is stirred it's hard to unstir.
+In my experience though projects tend to start in a single crate, without great attention to their internal dependency graph, and once compilation time becomes an issue, they have already created a spaghetti dependency graph that is difficult to refactor into smaller crates.
+It happened to Servo, and it has also been my experience on TiKV, where I have made multiple aborted attempts to extract various modules from the main program, in long sequences of commits that untangle internal dependencies. I suspect that avoiding problematic monoliths is something
+that Rust devs learn with experience, but it is a repeating phenomenon in large Rust projects.
 
 
 ### Internal parallelism
@@ -474,7 +538,7 @@ The number of factors affected by compilation unit size is large, and I've given
 
 - Inlining and optimization &mdash; inlining happens at the compilation unit level, and inlining is the key to unlocking optimization, so larger compilation units are better optimized. This story is complicated though by link-time-optimization (LTO).
 
-- Optimization complexity &mdash; optimization has superlinear complexity in code size, so biger compilation units increase compilation time non-linearly.
+- Optimization complexity &mdash; optimization tends to have superlinear complexity in code size, so biger compilation units increase compilation time non-linearly.
 
 - Downstream monomorphization &mdash; generics are only translated once they are instantiated, so even with smaller crates, their generic types will not be translated until later. This can result in the "final" crate having a disproportionate amount of translation compared to the others.
 
@@ -493,7 +557,7 @@ Unfortunately, because of all these variables, it's not at all obvious for any g
 
 ## Tradeoff #3: Trait coherence and the orphan rule
 
-Rust's trait system makes it difficult to use crates as abstraction boundaries because of a thing call the _orphan rule_.
+Rust's trait system makes it challenging to use crates as abstraction boundaries because of a thing call the _orphan rule_.
 
 Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
 
@@ -501,7 +565,7 @@ The [orphan rule][or] helps maintain [trait coherence], and exists to ensure tha
 
 What the orphan rule says, essentially, is that for any `impl`, either the _trait_ must be defined in the current crate, or the _type_ must be defined in the current crate.
 
-In practice, this creates quite a tight coupling between abstractions in Rust, discouraging decomposition into crates &mdash; sometimes the amount of ceremony, boilerplate and creativity it takes to obey Rust's coherence rules, while also maintaining principled abstraction boundaries, just doesn't feel worth the effort, so it doesn't happen.
+This can create a tight coupling between abstractions in Rust, discouraging decomposition into crates &mdash; sometimes the amount of ceremony, boilerplate and creativity it takes to obey Rust's coherence rules, while also maintaining principled abstraction boundaries, doesn't feel worth the effort, so it doesn't happen.
 
 This results in large crates which increase partial rebuild time.
 
@@ -555,7 +619,7 @@ It is common wisdom that all compilers have an architecture like the following:
 - through a succession of passes, that AST is refined into increasingly detailed "intermediate representations" (IRs)
 - the entire final IR is passed through a code generator to emit machine code
 
-I am calling this the "batch compilation" model. I don't know what others call it. This architecture is vaguelly how compilers have been described academically for decades; it is how most compilers have historically been implemented; and that is how `rustc` was originally architected. But it is not an architecture that well-supports the workflows of modern developers and their tooling, nor does it support fast recompilation.
+This is the batch compilation model. This architecture is vaguelly how compilers have been described academically for decades; it is how most compilers have historically been implemented; and that is how `rustc` was originally architected. But it is not an architecture that well-supports the workflows of modern developers and their tooling, nor does it support fast recompilation.
 
 Today, developers expect instant feedback about the code they are hacking. When they write a type error, the IDE should immediately put a red squiggle under their code and tell them about it. It should ideally do this even if the source code doesn't completely parse.
 
@@ -563,9 +627,9 @@ The batch compilation model is poorly suited for this. It requires that entire c
 
 This ability lends itself to the _perception_ of compiler speed, since the user is constantly getting necessary feedback while they work. It can dramatically shorten the feedback cycle for correcting type checking errors, and in Rust, getting the program to successfully type check takes up a huge proportion of developers' time.
 
-I'm sure the prior art is extensive, but a notable modern responsive compiler is the [Roselyn] .NET compiler; and the concept of responive compilers has recently been advanced significantly with the adoption of the [Language Server Protocol][lsp]. Both are Microsoft projects.
+I imagine the prior art is extensive, but a notable innovative responsive compiler is the [Roselyn] .NET compiler; and the concept of responsive compilers has recently been advanced significantly with the adoption of the [Language Server Protocol][lsp]. Both are Microsoft projects.
 
-In Rust today we support this IDE use case with the [Rust Language Server][RLS] (the RLS). But many Rust developers will know that the RLS experience can be pretty disappointing, with huge latency between typing and getting feedback. Sometimes the RLS fails to find the expected results, or simply fails compeletely. The failures of the RLS are almost entirely due to being built on top of a batch-model compiler, and not a responsive compiler.
+In Rust today we support this IDE use case with the [Rust Language Server][RLS] (the RLS). But many Rust developers will know that the RLS experience can be pretty disappointing, with huge latency between typing and getting feedback. Sometimes the RLS fails to find the expected results, or simply fails compeletely. The failures of the RLS are mostly due to being built on top of a batch-model compiler, and not a responsive compiler.
 
 The RLS is gradually being supplanted by [`rust-analyzer`], which amounts to essentially a ground-up rewrite of `rustc`, at least through its analysis phases, to support responsive compilation. It's expected that over time [`rust-analyzer` and `rustc` will share increasing amounts of code][libraryification].
 
@@ -595,7 +659,7 @@ First, these types of programs have their own crate ecosystem that also needs to
 
 Second, these tools are often used for code generation, and their invocation expands to sometimes large amounts of code.
 
-Third, procedural macros impede distributed build caching tools like [`sccache`]. The reason why is unexpected though &mdash; rustc today loads procedural macros as dynamic libraries, one of the few common uses of dynamic libraries in the Rust ecosystem. `sccache` isn't able to cache dynamic library artifacts because it doesn't have visibility into how the linker was invoked to create the dynamic library. So using sccache to build a project that heavily relies on procedural macros will often not speed up the build.
+Third, procedural macros impede distributed build caching tools like [`sccache`]. The reason why surprised me though &mdash; rustc today loads procedural macros as dynamic libraries, one of the few common uses of dynamic libraries in the Rust ecosystem. `sccache` isn't able to cache dynamic library artifacts because it doesn't have visibility into how the linker was invoked to create the dynamic library. So using sccache to build a project that heavily relies on procedural macros will often not speed up the build.
 
 [`syn`]: https://crates.io/crates/syn
 [`sccache`]: https://github.com/mozilla/sccache
@@ -606,7 +670,7 @@ Third, procedural macros impede distributed build caching tools like [`sccache`]
 This one is easy to overlook but has potentially significant impact on the
 hack-test cycle. One of the things that people love most about Rust &mdash; that
 it produces a single static binary that is trivial to deploy, also requires the
-Rust compiler to do a great deal of working linking that binary together.
+Rust compiler to do a great deal of work linking that binary together.
 
 Every time you build an executable `rustc` needs to run the linker. That
 includes every time you rebuild to run a test. In the same experiment I did to
@@ -624,13 +688,22 @@ actually called.
 There are a great many factors involved in determining the compile-time of a
 compiler, and the resulting run-time performance of its output. It is a miracle
 that optimizing compilers ever terminate at all, and that their resulting code
-is so amazingly fast. For humans, predicting how to organize their code to
-find the right balance of compile time and run time is pretty much impossible.
+is so amazingly fast. For humans, predicting how to organize their code to find
+the right balance of compile time and run time is pretty much impossible.
+
+The size and organization of compilation units has a huge impact on compile
+times, and in Rust it is difficult to control compilation unit size, and
+difficult to create compilation units that can build in parallel. Internal
+compiler parallelism currently does not make up for loss of parallelism between
+compilation units.
+
+A variety of factors cause Rust to have a poor build-test cycle, including the
+generics model, linking requirements, and the compiler architecture.
 
 
 ## In the next episode of Rust Compile-time Adventures with TiKV
 
-In the next episode of this series we'll do an experiment to show the tradeoffs between dynamic and static dispatch in Rust.
+In the next episode of this series we'll do an experiment to illustrate the tradeoffs between dynamic and static dispatch in Rust.
 
 Stay Rusty, friends.
 
@@ -857,5 +930,7 @@ RUSTC_WRAPPER=sccache cargo build --release
 RUSTC_WRAPPER=sccache cargo build --release
 
 1974.02user 104.05system 19:20.63elapsed
+
+- https://wiki.alopex.li/WhereRustcSpendsItsTime
 
 -->>
