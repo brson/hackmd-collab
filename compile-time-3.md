@@ -29,10 +29,9 @@ This time we're going to talk about compilation units.
 - [Internal parallelism](#user-content-internal-parallelism)
 - [Large vs. small crates](#user-content-large-vs-small-crates)
 - [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
-- [Thanks](#user-content-thanks)
 
 
-## Tradeoff #2: Huge compilation units
+## Compilation units
 
 A _compilation unit_ is the basic unit of work that a language's compiler operates on. In C and C++ the compilation unit is a source file. In Java it is a source file. In Rust the compilation unit is a _crate_, which is composed of many files.
 
@@ -163,11 +162,6 @@ Unfortunately, because of all these variables, it's not at all obvious for any g
 
 ## In the next episode of Rust Compile-time Adventures with TiKV
 
-In the next episode of this series we'll do an experiment to illustrate the tradeoffs between dynamic and static dispatch in Rust.
+TODO
 
 Stay Rusty, friends.
-
-
-## Thanks
-
-A number of people helped with this blog series. Thanks especially to Graydon Hoare for the feedback, and Calvin Weng for proofreading and editing.

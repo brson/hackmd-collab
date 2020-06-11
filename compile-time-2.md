@@ -319,7 +319,9 @@ All that is only touching on the surface of the tradeoffs involved in monomorphi
 
 ## In the next episode of Rust Compile-time Adventures with TiKV
 
-In the next episode of this series we'll do an experiment to illustrate the tradeoffs between dynamic and static dispatch in Rust.
+In the next episode of this series we'll discuss compilation units -- the
+bundles of code that a compiler processes at a single time -- and how selecting
+compilation units affects compile time.
 
 Stay Rusty, friends.
 

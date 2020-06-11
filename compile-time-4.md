@@ -1,4 +1,4 @@
-# Monomorphization and compile-time in Rust
+# Trait coherence -- a compile-time nuisance
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
@@ -13,17 +13,13 @@ behind the [TiDB] database.
 &nbsp;
 
 
-## Rust Compile-time Adventures with TiKV: Episode 2
+## Rust Compile-time Adventures with TiKV: Episode 4
 
 In [the previous post in the series][prev] we covered Rust's early development history, and how it led to a series of decisions that resulted in a high-performance language that compiles slowly. This time we'll go into detail about some of the reasons that Rust's design choices discourage fast compilation.
 
 [prev]: https://pingcap.com/blog/rust-compilation-model-calamity/
 
 
-- [Rust's huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
-- [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
-- [Internal parallelism](#user-content-internal-parallelism)
-- [Large vs. small crates](#user-content-large-vs-small-crates)
 - [Tradeoff #3: Trait coherence and the orphan rule](#user-content-tradeoff-3-trait-coherence-and-the-orphan-rule)
 - [Tradeoff #4: LLVM and poor LLVM IR generation](#user-content-tradeoff-4-llvm-and-poor-llvm-ir-generation)
 - [Tradeoff #5: Batch compilation](#user-content-tradeoff-5-batch-compilation)
