@@ -933,3 +933,19 @@ RUSTC_WRAPPER=sccache cargo build --release
 - https://wiki.alopex.li/WhereRustcSpendsItsTime
 
 -->>
+
+<!--
+
+I cannot make a simple argument about this because I'm still not smart enough
+about module systems — the full thing is laid out in dreyer's thesis
+(https://www.cs.cmu.edu/~rwh/theses/dreyer.pdf) and discussed in shorter
+slide-deck form here (http://macqueenfest.cs.uchicago.edu/slides/dreyer.pdf) —
+but suffice to say that recursive modules make it possible to see the "same"
+opaque type through two paths that should probably be considered equal but
+aren't easily determined to be so, I think in part due to the mix of opacity
+that modules provide and the fact that you have to partly look through that
+opacity to resolve recursion. so anyway I decided this was probably getting into
+"research" and I should just avoid the problem space, go with acyclic modules.
+
+
+-->
