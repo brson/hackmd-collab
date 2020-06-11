@@ -23,10 +23,9 @@ In [the previous post in the series][prev] we covered Rust's early development h
 - [Comments on the last episode](#user-content-comments-on-the-last-episode)
 - [A brief aside about compile-time scenarios](#user-content-a-brief-aside-about-compile-time-scenarios)
 - [Tradeoff #1: Monomorphized generics](#user-content-tradeoff-1-monomorphized-generics)
-  - [A handwritten example](#user-content-a-handwritten-example)
-  - [An example from the Rust compiler](#user-content-an-example-from-the-rust-compiler)
+  <!--- [A handwritten example](#user-content-a-handwritten-example)-->
+  - [An example in Rust](#user-content-an-example-in-rust)
   - [More about the tradeoff](#user-content-more-about-the-tradeoff)
-  - [Nuanced commentary from Niko](#user-content-nuanced-commentary-from-niko)
 - [Tradeoff #2: Huge compilation units](#user-content-tradeoff-2-huge-compilation-units)
   - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
   - [Internal parallelism](#user-content-internal-parallelism)
@@ -119,12 +118,10 @@ Generics generally are a complex topic, and Rust generics come in a number of fo
 As a simple example for this section, consider the following `ToString` trait and the generic function `print`:
 
 ```rust
-trait Stringify {
-    fn stringify(&self) -> String;
-}
+use std::string::ToString;
 
-fn print<S: Stringify>(v: S) {
-     println!("hello {}", v.to_string());
+fn print<T: ToString>(v: T) {
+     println!("{}", v.to_string());
 }
 ```
 
@@ -132,8 +129,8 @@ fn print<S: Stringify>(v: S) {
 
 ```rust
 fn main() {
+    print("hello, world");
     print(101);
-    print(false);
 }
 ```
 
@@ -152,134 +149,34 @@ In general, for programming languages, there are two ways to translate a generic
 The first results in _static_ method dispatch, the second in _dynamic_ (or "virtual") method dispatch. The first is sometimes called "monomorphization", particularly in the context of C++ and Rust, a confusingly complex word for a simple idea.
 
 
-### A hand-written example
+### An example in Rust
 
-To make this concrete, let's imagine a hand-translation of both the static dispatch and dynamic dispatch strategies for our two `print` instantiations. These are just illustrative examples, and not what the compiler actually produces.
+The previous example uses Rust's type parameters (`<T: ToString>`) to define a
+statically-dispatched `print` function. In this section we present two more Rust
+examples, the first with static dispatch, using references to `impl` trait
+instances, and the second with dynamic dispatch, with references to `dyn` trait
+instances.
 
-First, the static dispatch:
+Static ([playground link][pl1]):
 
-```rust
-fn print_u32(v: &u32) {
-    println!("hello {}", v.stringify())
-}
-
-fn print_bool(v: &bool) {
-    println!("hello {}", v.stringify())
-}
-
-fn main() {
-    print_u32(&5);
-    print_bool(&false);
-}
-```
-
-Hey that's pretty easy to understand. Instead of a single `print` function, we
-now have two, `print_u32`, and `print_bool`. They both contain the call to the
-`println!` macro, and they call the `stringify` method directly.
-
-It's harder to illustrate the dynamic case, but I'll make an attempt.
-
-First, what a generic `print` dynamic function might look like
-under the hood:
-
-
-```rust
-use libc::c_void;
-
-unsafe fn print_dynamic(v: *const c_void, vtable: &StringifyVTable) {
-    println!("hello {}", (vtable.stringify)(v));
-}
-
-struct StringifyVTable {
-    stringify: unsafe fn(*const c_void) -> String,
-}
-```
-
-We have to use unsafe pointers in the implementation of dynamic dispatch.
-
-This time the generic `print` function is translated to a single
-`print_dynamic`, and instead of taking one argument, it takes two: the
-first is an opaque pointer (`*const c_void`), and the second is a v-table
-containing a `stringify` function.
-
-The function in the v-table is responsible for casting the opaque pointer to the
-correct type, and the compiler guarantees it is the right type.
-
-The important thing to note here is that the call to the `println!` macro only
-need be made once, and it is shared between all implementations.
-
-Now, for the rest of the dynamic v-table example:
-
-```rust
-use std::mem::transmute;
-
-fn main_dynamic() {
-    unsafe {
-        print_dynamic(transmute(&5_u32), &STRINGIFY_U32_VTABLE);
-        print_dynamic(transmute(&false), &STRINGIFY_BOOL_VTABLE);
-    }
-}
-
-const STRINGIFY_U32_VTABLE: StringifyVTable = StringifyVTable {
-    stringify: stringify_fn_u32,
-};
-
-unsafe fn stringify_fn_u32(v: *const c_void) -> String {
-    let v: &u32 = transmute(v);
-    v.stringify()
-}
-
-const STRINGIFY_BOOL_VTABLE: StringifyVTable = StringifyVTable {
-    stringify: stringify_fn_bool,
-};
-
-unsafe fn stringify_fn_bool(v: *const c_void) -> String {
-    let v: &bool = transmute(v);
-    v.stringify()
-}
-```
-
-Yeah, it's ugly. This is unsafely casting references to opaque pointers,
-constructing v-tables, and pairing the two in calls to `print_dynamic`.
-
-(`transmute` here is an unsafe type-casting function. In real code you would not
-use it for this purpose, but it makes the example more readable).
-
-Ok, that was all uglier than I wish it were. I hope it was understandable and
-got the point across: in the first (static) case, there are two `print`
-functions and no calls through function pointers; in the second (dynamic) there
-is only one `print` function, plus a layer of indirection through function
-pointers in `StringifyVTable`.
-
-[Here's a Rust playground link][spg] to the full code for these two examples if
-you want to play with them.
-
-[spg]: https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=57503afa988a02c749dddffa15b84f74
-
-
-### An example from the Rust compiler
-
-Now let's look at what the Rust compiler actually emits for similar cases.
-
-First, a real Rust static dispatch test case ([playground link][pl1]):
-
-[pl1]: https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=96f4dfbe0b1e669a700ea2112eb02cdd
+[pl1]: https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=066e72731fbdbf212f68c25b5a4e3b72
 
 ```rust
 use std::string::ToString;
 
 #[inline(never)]
-fn print<T: ToString>(v: T) {
+fn print(v: &impl ToString) {
      println!("{}", v.to_string());
 }
 
 fn main() {
-    print("hello, world");
-    print(101);
+    print(&"hello, world");
+    print(&101);
 }
+
 ```
 
-And now, a real Rust dynamic dispatch test case ([playground link][pl2]):
+Dynamic ([playground link][pl2]):
 
 [pl2]: https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=d359d0440acaeed1d25020955979b9ce
 
@@ -297,65 +194,65 @@ fn main() {
 }
 ```
 
-(In these examples we have to use `inline(never)` to defeat the compiler
-optimizer. Without this it would turn these simple examples into the exact same
-machine code. I'll explore this further in the next episode of this series.)
+Notice that the only difference between these two cases is that the first
+`print`'s argument is type `&impl ToString`, and the second's is `&dyn
+ToString`. The first is using static dispatch, and the second dynamic.
 
-A selection of the assembly for the static case:
+Note that in these examples we have to use `inline(never)` to defeat the
+compiler optimizer. Without this it would turn these simple examples into the
+exact same machine code. I'll explore this further in a future episode of this
+series.
+
+Below is an extremely simplified and sanitized version of the assembly
+for these two examples. If you want to see the real thing, the playgroud
+links above can generate them by clicking the buttons labeled `... -> ASM`.
 
 ```
-_ZN10playground5print17ha0649f845bb59b0cE:
+print::hffa7359fe88f0de2:
     ...
-	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17hf85bec40266d54a0E(%rip), %rax
-    ...
-	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
+    callq   *::core::fmt::write::h01edf6dd68a42c9c(%rip)
     ...
 
-_ZN10playground5print17hffa7359fe88f0de2E:
+print::ha0649f845bb59b0c:
     ...
-	leaq	_ZN44_$LT$$RF$T$u20$as$u20$core..fmt..Display$GT$3fmt17h09f612f58a92f16cE(%rip), %rax
-    ...
-	callq	*_ZN4core3fmt5write17h01edf6dd68a42c9cE@GOTPCREL(%rip)
+    callq   *::core::fmt::write::h01edf6dd68a42c9c(%rip)
     ...
 
-_ZN10playground4main17h6b41e7a408fe6876E:
-	pushq	%rax
-	callq	_ZN10playground5print17hffa7359fe88f0de2E
-	popq	%rax
-	jmp	_ZN10playground5print17ha0649f845bb59b0cE
+main::h6b41e7a408fe6876:
+    ...
+    callq   print::hffa7359fe88f0de2
+    ...
+    callq   print::ha0649f845bb59b0c
 ```
 
 And the dynamic case:
 
 ```
-_ZN10playground5print17h796a2cdf500a8987E:
+print::h796a2cdf500a8987:
     ...
-	leaq	_ZN60_$LT$alloc..string..String$u20$as$u20$core..fmt..Display$GT$3fmt17h6d6512069e6d4207E(%rip), %rax
-    ...
-	callq	*_ZN3std2io5stdio6_print17heec45c591c88165dE@GOTPCREL(%rip)
+    callq   *::core::fmt::write::h01edf6dd68a42c9c(%rip)
     ...
 
-_ZN10playground4main17h6b41e7a408fe6876E:
-	pushq	%rax
-	leaq	.L__unnamed_8(%rip), %rdi
-	leaq	.L__unnamed_9(%rip), %rsi
-	callq	_ZN10playground5print17h796a2cdf500a8987E
-	leaq	.L__unnamed_10(%rip), %rdi
-	leaq	.L__unnamed_11(%rip), %rsi
-	popq	%rax
-	jmp	_ZN10playground5print17h796a2cdf500a8987E
+main::h6b41e7a408fe6876:
+    ...
+    callq   print::h796a2cdf500a8987
+    ...
+    callq   print::h796a2cdf500a8987
 ```
 
-This omits most everything, but you can generate the full assembly yourself on the playground by clicking `... -> ASM`.
-
-Here we see the same pattern: in the first, there's no indirection, but two `print` functions; in the second there's a layer of indirection through function pointers, and only one `print` function.
+The important thing to note here is the duplication of functions or lack
+thereof, depending on the strategy. In the static case there are two `print`
+functions, distinguished by a hash value in their names, and `main` calls both
+of them. In the dynamic case, there is a single `print` function that `main`
+calls twice. The details of how these two strategies actually handle their
+arguments at the machine level are too intricate to go into here.
 
 
 ### More about the tradeoff
 
 These two strategies represent a notoriously difficult tradeoff: the first creates lots of machine instruction duplication, forcing the compiler to spend time generating those instructions, and putting pressure on the instruction cache, but &mdash; crucially &mdash; dispatching all the trait method calls statically instead of through a function pointer. The second saves lots of machine instructions and takes less work for the compiler to translate to machine code, but every trait method call is an indirect call through a function pointer, which is generally slower because the CPU can't know what instruction it is going jump to until the pointer is loaded.
 
-It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in the next edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though factors that make this intuition suspect:
+It is often thought that the static dispatch strategy results in faster machine code, though I have not seen any research into the matter (we'll do an experiment on this subject in a future edition of this series). Intuitively, it makes sense &mdash; if the CPU knows the address of all the functions it is calling it should be able to call them faster than if it has to first load the address of the function, then load the instruction code into the instruction cache. There are though factors that make this intuition suspect:
 
 - first, modern CPUs have invested a lot of silicon into branch prediction, so
   if a function pointer has been called recently it will likely be predicted
@@ -376,10 +273,9 @@ and at higher optimization levels
 [shared generics]: https://github.com/rust-lang/rust/issues/47317#issuecomment-478894318
 [sib]: https://github.com/rust-lang/rust/pull/48779
 
+All that is only touching on the surface of the tradeoffs involved in monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he had some words to say about it:
 
-### Nuanced commentary from Niko
-
-All that is only touching on the surface of the tradeoffs involved in monomorphization. I passed this draft by [Niko], the primary type theorist behind Rust, and he said, more-or-less
+[ng]: https://gist.github.com/brson/a0bfd409788053ca3f8610afac9e2d15
 
 > niko: so far, everything looks pretty accurate, except that I think the monomorphization area leaves out a lot of the complexity. It's definitely not just about virtual function calls.
 
