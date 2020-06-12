@@ -28,23 +28,25 @@ This time we're going to talk about compilation units.
 - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
 - [Internal parallelism](#user-content-internal-parallelism)
 - [Large vs. small crates](#user-content-large-vs-small-crates)
+- [Trait coherence and the orphan rule](#user-content-trait-coherence-and-the-orphan-rule)
 - [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
+- [Thanks](#user-content-thanks)
 
 
 ## Compilation units
 
 A _compilation unit_ is the basic unit of work that a language's compiler operates on. In C and C++ the compilation unit is a source file. In Java it is a source file. In Rust the compilation unit is a _crate_, which is composed of many files.
 
-The size of compilation units incur a number of tradeoffs. Larger compilation units take longer to analyze, translate, and optimize than smaller crates. And in general, when a change is made to a single compilation unit, the whole compilation unit must be recompiled.
+The size of compilation units incur a number of tradeoffs. Larger compilation units take longer to analyze, translate, and optimize than smaller compilation units. And in general, when a change is made to a single compilation unit, the whole compilation unit must be recompiled.
 
-More, smaller crates improve the _perception_ of compile time, if not the total compile time, because a single change may force less of the project to be recompiled. This benefits the "partial recompilation" use cases. A project with more crates though may do more work on a full recompile due to a variety of factors, which I will summarize at the end of this section.
+More, smaller crates improve the _perception_ of compile time, if not the total compile time, because a single change may force less of the project to be recompiled. This benefits the "partial recompilation" use cases. A project with more crates though may do more work on a full recompile due to a variety of factors, which I will summarize at the end of this post.
 
 Rust crates don't have to be large, but there are a variety of factors that encourage them to be. The first is simply the relative complexity of adding new crates to a Rust project vs. adding a new module to a crate. New Rust projects tend to turn into monoliths unless given special attention to abstraction boundaries.
 
 
-### Dependency graphs and unstirring spaghetti
+## Dependency graphs and unstirring spaghetti
 
-Within a crate, there are no fundamental restrictions on module interdependencies, though there are language features that allow some amount of information-hiding within a crate. The big advantage and risk of having modules coexist in the same crate is that they can be _mutual dependent_, two modules both depending on names exported from the other. Here's an example similar to many encountered in TiKV:
+Within a crate, there are no fundamental restrictions on module interdependencies, though there are language features that allow some amount of information-hiding within a crate. The big advantage and risk of having modules coexist in the same crate is that they can be _mutual dependent_, two modules both depending on names exported from the other. Here's an example similar to many encountered in TiKV, in which `engine` imports ("uses") `network::Message` and `network` imports `storage::Engine`.
 
 ```rust
 mod storage {
@@ -58,11 +60,13 @@ mod storage {
 }
 
 mod network {
-  use storage::Engine as StorageEngine;
+  use storage::Engine;
 
   pub enum Message { ... }
 
-  struct Server;
+  struct Server {
+    engine: Engine,
+  }
 
   impl Server {
     fn handle_message(&self, msg: Message) -> Result<()> {
@@ -106,7 +110,7 @@ and enables phases that need to traverse a complete definition, like typecheckin
 [dreyer's thesis]: https://www.cs.cmu.edu/~rwh/theses/dreyer.pdf
 [sdfh]: http://macqueenfest.cs.uchicago.edu/slides/dreyer.pdf
 
-Although driven by fundamental constraints, the hard daggishness of crates is useful for a number of reasons: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward "whole-program" compilation in the future).
+Although driven by fundamental constraints, the hard daggishness of crates is useful for a number of reasons: it enforces careful abstractions, defines units of _parallel_ compilation, defines basically sensible codegen units, and dramaticaly reduces language and compiler complexity (even as the compiler likely moves toward whole-program, demand-driven, compilation in the future).
 
 Note the emphasis on _parallelism_. The crate DAG is the simplest source of compile-time parallelism Rust has access to. Cargo today will use the DAG to automatically divide work into parallel compilation jobs.
 
@@ -117,15 +121,16 @@ It happened to Servo, and it has also been my experience on TiKV, where I have m
 that Rust devs learn with experience, but it is a repeating phenomenon in large Rust projects.
 
 
-### Internal parallelism
+## Internal parallelism
 
-So Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate.
+Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate.
 
 So in addition to `cargo`s parallel crate compilation, `rustc` itself is parallel over a single crate. It wasn't designed to be parallel though, so its parallelism is limited and hard-won.
 
-Today the only real internal parallelism in `rustc` is the use of [_codegen units_], by which `rustc` automatically divides a crate into multiple LLVM modules during translation. By doing this it can perform code generation in parallel.
+Today the only real internal parallelism in `rustc` is the use of [_codegen units_], by which `rustc` automatically divides a crate into multiple LLVM modules during translation. By doing this it can perform code generation in parallel. Like a crate, a Rust codegen-unit
+is also a compilation unit, but it is an LLVM compilation unit.
 
-And combined with [_incremental compilation_], it can avoid re-translating codegen units which have not changed from run to run, decreasing partial rebuild time. Unfortunately, the impact of codegen units and incremental compilation on both compile-time and run-time performance is hard to predict: improving rebuild time depends on `rustc` successfully dividing a crate into independent units that are unlikely to force each other to recompile when changed, and its not obvious how humans should write their code to help `rustc` in this task; and arbitrarily dividing up a crate into codegen units creates arbitrary barriers to inlining, causing unexpected de-optimizations.
+Combined with [_incremental compilation_], it can avoid re-translating codegen units which have not changed from run to run, decreasing partial rebuild time. Unfortunately, the impact of codegen units and incremental compilation on both compile-time and run-time performance is hard to predict: improving rebuild time depends on `rustc` successfully dividing a crate into independent units that are unlikely to force each other to recompile when changed, and its not obvious how humans should write their code to help `rustc` in this task; and arbitrarily dividing up a crate into codegen units creates arbitrary barriers to inlining, causing unexpected de-optimizations.
 
 [_codegen units_]: https://doc.rust-lang.org/rustc/codegen-options/index.html
 [_incremental compilation_]: https://rust-lang.github.io/rustc-guide/queries/incremental-compilation.html
@@ -160,8 +165,39 @@ The number of factors affected by compilation unit size is large, and I've given
 Unfortunately, because of all these variables, it's not at all obvious for any given project what the impact of refactoring into smaller crates is going to be. Anticipated wins due to increased parallelism are often erased by other factors such as downstream monomorphization, generic duplication, and LTO.
 
 
+## Trait coherence and the orphan rule
+
+Rust's trait system further makes it challenging to use crates as abstraction boundaries because of a thing call the _orphan rule_.
+
+Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
+
+The [orphan rule][or] helps maintain [trait coherence], and exists to ensure that the Rust compiler never encounters two implementations of a trait for the same type. If it were to encounter two such implementations then it would need to resolve the conflict while ensuring that the result is sound.
+
+What the orphan rule says, essentially, is that for any `impl`, either the _trait_ must be defined in the current crate, or the _type_ must be defined in the current crate.
+
+This can create a tight coupling between abstractions in Rust, discouraging decomposition into crates &mdash; sometimes the amount of ceremony, boilerplate and creativity it takes to obey Rust's coherence rules, while also maintaining principled abstraction boundaries, doesn't feel worth the effort, so it doesn't happen.
+
+This results in large crates which increase partial rebuild time.
+
+There's subject deserves more examples and consideration, but I haven't the time for it now.
+
+Haskell's type classes, on which Rust's traits are based, do not have an orphan rule. I do not know the extent of problems this causes in practice. At the time of Rust's design, it was thought to be problematic enough to correct.
+
+[or]: https://smallcultfollowing.com/babysteps/blog/2015/01/14/little-orphan-impls/
+[trait coherence]: https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence
+
+
 ## In the next episode of Rust Compile-time Adventures with TiKV
 
-TODO
+In the next episode of this series we'll wrap up this exploration of
+the reason's for Rust's slow compile times with a few smaller slow-compilation tidbits.
+
+Then maybe we'll move on to something new, like techniques for
+speeding up Rust builds.
 
 Stay Rusty, friends.
+
+
+## Thanks
+
+A number of people helped with this blog series. Thanks especially to Graydon Hoare for the feedback, and Calvin Weng for proofreading and editing.

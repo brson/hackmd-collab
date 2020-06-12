@@ -1,4 +1,4 @@
-# Monomorphization and compile-time in Rust
+# Generics and compile-time in Rust
 
 ![header image](https://brson.github.io/tmp/calamity-header.jpg)
 
@@ -192,7 +192,7 @@ Notice that the only difference between these two cases is that the first
 ToString`. The first is using static dispatch, and the second dynamic.
 
 Note that in these examples we have to use `inline(never)` to defeat the
-compiler optimizer. Without this it would turn these simple examples into the
+optimizer. Without this it would turn these simple examples into the
 exact same machine code. I'll explore this further in a future episode of this
 series.
 
