@@ -196,8 +196,8 @@ that is only used once, like in the earlier example `fn print<T: ToString>(v:
 T)`.
 
 Note that in these examples we have to use `inline(never)` to defeat the
-optimizer. Without this it would turn these simple examples into the
-exact same machine code. I'll explore this further in a future episode of this
+optimizer. Without this it would turn these simple examples into the exact same
+machine code. I'll explore this phenomenon further in a future episode of this
 series.
 
 Below is an extremely simplified and sanitized version of the assembly
