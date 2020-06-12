@@ -191,6 +191,10 @@ Notice that the only difference between these two cases is that the first
 `print`'s argument is type `&impl ToString`, and the second's is `&dyn
 ToString`. The first is using static dispatch, and the second dynamic.
 
+In Rust `&impl ToString` is essentially shorthand for a type parameter argument
+that is only used once, like in the earlier example `fn print<T: ToString>(v:
+T)`.
+
 Note that in these examples we have to use `inline(never)` to defeat the
 optimizer. Without this it would turn these simple examples into the
 exact same machine code. I'll explore this further in a future episode of this
