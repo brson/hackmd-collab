@@ -36,9 +36,19 @@ with a few more subjects: LLVM, compiler architecture, and linking.
 
 ## Tradeoff #4: LLVM and poor LLVM IR generation
 
-`rustc` uses LLVM to generate code. LLVM can generate very fast code, but it comes at a cost. LLVM is a very big system. In fact, LLVM code makes up the majority of the Rust codebase. And it doesn't operate particularly fast.
+`rustc` uses LLVM to generate code. LLVM can generate very fast code, but it
+comes at a cost. LLVM is a very big system. In fact, LLVM code makes up the
+majority of the Rust codebase. And it doesn't run particularly fast. In fact,
+the most recent release of LLVM [caused significant regressions to Rust's compile time][rcr1]
+for no particular benefit.
 
-So even when `rustc` is generating debug builds, that are supposed to build fast, but are allowed to run slow, generating the machine code still takes a considerable amount of time.
+The Rust compiler needs to keep up with LLVM releases though to avoid painful maintainance problems,
+so Rust builds are [soon going to be pointlessly but unavoidably slower][rcr2].
+
+[rcr1]: https://lists.llvm.org/pipermail/llvm-dev/2020-May/141482.html
+[rcr2]: https://github.com/rust-lang/rust/pull/67759
+
+Even when `rustc` is generating debug builds, that are supposed to build fast, but are allowed to run slow, generating the machine code still takes a considerable amount of time.
 
 In a TiKV release build, LLVM passes occupy 84% of the build time, while in a debug build LLVM passes occupy 35% of the build time ([full details gist][tpg]).
 
@@ -61,12 +71,12 @@ This is another problem with the compiler architecture &mdash; it was just easie
 
 So this can be fixed over time, and it's one of the main avenues the compiler team is pursuing to improve compile-time performance.
 
-Remember earlier the discussion about how monomorphization works? How it duplicates function definitions for every combination of instantiated type parameters? Well, that's not only a source of machine code bloat but also LLVM IR bloat. Every one of those functions is filled with duplicated, unoptimized, LLVM IR.
+Remember a few episodes ago when we discussed how monomorphization works? How it duplicates function definitions for every combination of instantiated type parameters? Well, that's not only a source of machine code bloat but also LLVM IR bloat. Every one of those functions is filled with duplicated, unoptimized, LLVM IR.
 
-`rustc` is slowly being modified to such that it can perform its own optimizations on its own MIR (mid-level IR), and crucially, the MIR representation is pre-monomorphization. That means that MIR-level optimizations only need to be done once per generic function, and in turn produce smaller monomorphized LLVM IR, that LLVM can (in theory) translate faster than it does with its unoptimized functions today.
+`rustc` is slowly being modified such that it can perform its own optimizations on its own MIR (mid-level IR), and crucially, the MIR representation is pre-monomorphization. That means that MIR-level optimizations only need to be done once per generic function, and in turn produce smaller monomorphized LLVM IR, that LLVM can (in theory) translate faster than it does with its unoptimized functions today.
 
 
-## Tradeoff #5: Batch compilation
+## Batch compilation
 
 It turns out that the entire architecture of `rustc` is "wrong", and so is the architecture of most compilers ever written.
 
@@ -106,7 +116,7 @@ Niko spoke about this architecture in his ["Responsive compilers" talk at PLISS 
 
 
 
-## Tradeoff #6: Build scripts and procedural macros
+## Build scripts and procedural macros
 
 Cargo allows the build to be customized with two types of custom Rust programs: build scripts and procedural macros. The mechanism for each is different but they both similarly introduce arbitrary computation into the compilation process.
 
@@ -122,7 +132,7 @@ Third, procedural macros impede distributed build caching tools like [`sccache`]
 [`sccache`]: https://github.com/mozilla/sccache
 
 
-## Tradeoff #7: Static linking
+## Static linking
 
 This one is easy to overlook but has potentially significant impact on the
 hack-test cycle. One of the things that people love most about Rust &mdash; that
@@ -169,3 +179,8 @@ In the next episode of this series we'll do an experiment to illustrate the trad
 Or maybe we'll do something else. I don't know yet.
 
 Stay Rusty, friends.
+
+
+## Thanks
+
+A number of people helped with this blog series. Thanks especially to Ted Mielczarek for their insights, and Calvin Weng for proofreading and editing.

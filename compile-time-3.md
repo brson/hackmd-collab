@@ -26,9 +26,9 @@ This time we're going to talk about compilation units.
 
 - [Compilation units](#user-content-compilation-units)
 - [Dependency graphs and unstirring spaghetti](#user-content-dependency-graphs-and-unstirring-spaghetti)
+- [Trait coherence and the orphan rule](#user-content-trait-coherence-and-the-orphan-rule)
 - [Internal parallelism](#user-content-internal-parallelism)
 - [Large vs. small crates](#user-content-large-vs-small-crates)
-- [Trait coherence and the orphan rule](#user-content-trait-coherence-and-the-orphan-rule)
 - [In the next episode of Rust Compile-time Adventures with TiKV](#user-content-in-the-next-episode-of-rust-compile-time-adventures-with-tikv)
 - [Thanks](#user-content-thanks)
 
@@ -121,9 +121,35 @@ It happened to Servo, and it has also been my experience on TiKV, where I have m
 that Rust devs learn with experience, but it is a repeating phenomenon in large Rust projects.
 
 
+## Trait coherence and the orphan rule
+
+Rust's trait system further makes it challenging to use crates as abstraction boundaries because of a thing call the _orphan rule_.
+
+Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
+
+The [orphan rule][or] helps maintain [trait coherence], and exists to ensure that the Rust compiler never encounters two implementations of a trait for the same type. If it were to encounter two such implementations then it would need to resolve the conflict while ensuring that the result is sound.
+
+What the orphan rule says, essentially, is that for any `impl`, either the _trait_ must be defined in the current crate, or the _type_ must be defined in the current crate.
+
+This can create a tight coupling between abstractions in Rust, discouraging decomposition into crates &mdash; sometimes the amount of ceremony, boilerplate and creativity it takes to obey Rust's coherence rules, while also maintaining principled abstraction boundaries, doesn't feel worth the effort, so it doesn't happen.
+
+This results in large crates which increase partial rebuild time.
+
+This subject deserves more examples and a stronger argument,
+but I haven't the enthusiasm for it now.
+
+Haskell's type classes, on which Rust's traits are based, do not have an orphan rule. I do not know the extent of problems this causes in practice for Haskell. At the time of Rust's design, it was thought to be problematic enough to correct.
+
+[or]: https://smallcultfollowing.com/babysteps/blog/2015/01/14/little-orphan-impls/
+[trait coherence]: https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence
+
+
 ## Internal parallelism
 
-Rust crates tend to be large, and even when the crate DAG is complex, there are almost always bottlenecks where there is only one compiler instance running, working on a single crate.
+As crates are the main unit of parallelism in compilation pipeline,
+in theory it is desirable to have a wide crate DAG with roughly
+equally-complex crates, such that the compiler can be using all
+the machines cores all the time. In practice though there are almost always bottlenecks where there is only one compiler instance running, working on a single crate.
 
 So in addition to `cargo`s parallel crate compilation, `rustc` itself is parallel over a single crate. It wasn't designed to be parallel though, so its parallelism is limited and hard-won.
 
@@ -142,7 +168,7 @@ The rest of the compiler's work is completely serial, though soon it should [per
 
 ### Large vs. small crates
 
-The number of factors affected by compilation unit size is large, and I've given up trying to explain them all coherently. Here's a list of some of them.
+The compilation properties affected by compilation unit size is large, and I've given up trying to explain them all coherently. Here's a list of some of them.
 
 - Compilation unit parallelism &mdash; as discussed, parallelising compilation units is trivial.
 
@@ -150,7 +176,7 @@ The number of factors affected by compilation unit size is large, and I've given
 
 - Optimization complexity &mdash; optimization tends to have superlinear complexity in code size, so biger compilation units increase compilation time non-linearly.
 
-- Downstream monomorphization &mdash; generics are only translated once they are instantiated, so even with smaller crates, their generic types will not be translated until later. This can result in the "final" crate having a disproportionate amount of translation compared to the others.
+- Downstream monomorphization &mdash; generics are only translated once they are instantiated, so even if all crates are perfectly equally sized for parallel compilation, their generic types will not be translated until later stages in the crate graph. This can result in the "final" crate having a disproportionate amount of translation compared to the others.
 
 - Generic duplication &mdash; generics are translated in the crate which instantiates them, so more crates that use the same generics means more translation time.
 
@@ -158,33 +184,11 @@ The number of factors affected by compilation unit size is large, and I've given
 
 - Saving and restoring metadata &mdash; Rust needs to save and load metadata about each crate and each dependency, each time it is run, so more crates means more redundant loading.
 
-- Parallel "codegen units" &mdash; `rustc` can automatically split its LLVM IR into multiple compilation units, called "codegen units". The degree to which it is effective at this depends a lot on how a crate's internal dependencies are organized and the compilers ability to understand them. This can result in faster partial recompilation, at the expense of optimization, since inlining opportunities are lost.
+- Parallel "codegen units" &mdash; `rustc` can automatically split its LLVM IR into multiple compilation units, called "codegen units". The degree to which it is effective at this depends a lot on how a crate's internal dependencies are organized and the compiler's ability to understand them. This can result in faster partial recompilation, at the expense of optimization, since inlining opportunities are lost.
 
 - Compiler-internal parallelism &mdash; Parts of `rustc` itself are parallel. That internal parallelism has its own unpredictable bottlenecks and unpredictable interactions with external build-system parallelism.
 
 Unfortunately, because of all these variables, it's not at all obvious for any given project what the impact of refactoring into smaller crates is going to be. Anticipated wins due to increased parallelism are often erased by other factors such as downstream monomorphization, generic duplication, and LTO.
-
-
-## Trait coherence and the orphan rule
-
-Rust's trait system further makes it challenging to use crates as abstraction boundaries because of a thing call the _orphan rule_.
-
-Traits are the most common tool for creating abstractions in Rust. They are powerful, but like much of Rust's power, it comes with a tradeoff.
-
-The [orphan rule][or] helps maintain [trait coherence], and exists to ensure that the Rust compiler never encounters two implementations of a trait for the same type. If it were to encounter two such implementations then it would need to resolve the conflict while ensuring that the result is sound.
-
-What the orphan rule says, essentially, is that for any `impl`, either the _trait_ must be defined in the current crate, or the _type_ must be defined in the current crate.
-
-This can create a tight coupling between abstractions in Rust, discouraging decomposition into crates &mdash; sometimes the amount of ceremony, boilerplate and creativity it takes to obey Rust's coherence rules, while also maintaining principled abstraction boundaries, doesn't feel worth the effort, so it doesn't happen.
-
-This results in large crates which increase partial rebuild time.
-
-There's subject deserves more examples and consideration, but I haven't the time for it now.
-
-Haskell's type classes, on which Rust's traits are based, do not have an orphan rule. I do not know the extent of problems this causes in practice. At the time of Rust's design, it was thought to be problematic enough to correct.
-
-[or]: https://smallcultfollowing.com/babysteps/blog/2015/01/14/little-orphan-impls/
-[trait coherence]: https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence
 
 
 ## In the next episode of Rust Compile-time Adventures with TiKV
